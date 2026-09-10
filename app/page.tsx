@@ -2,6 +2,8 @@
 /* oxlint-disable next/no-img-element -- Thumbnails are local data URLs; they must never go through a server image optimizer. */
 /* oxlint-disable jsx-a11y/media-has-caption -- This is a user-supplied video editing preview; no caption track is available. */
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { renderMovie, type ExportPhase } from '../lib/render-movie';
 import {
   Layers2,
   Plus,
@@ -21,7 +23,6 @@ import {
 import {
   disposeClip,
   loadClip,
-  renderMovie,
   seek,
   snapshot,
   type Clip,
@@ -80,6 +81,12 @@ export default function Home() {
   const [order, setOrder] = useState([0, 1]);
   const [audio, setAudio] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [quality, setQuality] = useState('720');
+  const [exportPhase, setExportPhase] = useState<ExportPhase>('preparing');
+  const [exportMessage, setExportMessage] = useState('');
+  const exportDialog = useRef<HTMLDialogElement>(null);
+  const exportCanvas = useRef<HTMLCanvasElement>(null);
+  const sourceHost = useRef<HTMLDivElement>(null);
   const [result, setResult] = useState<{
     url: string;
     blob: Blob;
@@ -90,12 +97,17 @@ export default function Home() {
   const [seeking, setSeeking] = useState(false);
   const stage = useRef<HTMLDivElement>(null),
     controller = useRef<AbortController | null>(null),
-    context = useRef<AudioContext | null>(null),
-    nodes = useRef(new Map<HTMLVideoElement, MediaElementAudioSourceNode>());
+    context = useRef<AudioContext | null>(null);
   const mounted = useRef(true);
   const apiRef = useRef({ aligned: false, offset: 0, duration: 0, loaded: 0 });
+  const short = quality === '480' ? 480 : 720,
+    long = quality === '480' ? 854 : 1280;
   const dims =
-    ratio === '9:16' ? [720, 1280] : ratio === '1:1' ? [720, 720] : [1280, 720];
+    ratio === '9:16'
+      ? [short, long]
+      : ratio === '1:1'
+        ? [short, short]
+        : [long, short];
   let plan: {
     starts: number[];
     remaining: number[];
@@ -125,7 +137,7 @@ export default function Home() {
         if (c) disposeClip(c);
       });
       if (resultRef.current) URL.revokeObjectURL(resultRef.current);
-      void context.current?.close();
+      void context.current?.close().catch(() => {});
     };
   }, []);
   useEffect(() => {
@@ -235,8 +247,6 @@ export default function Home() {
       }
       const old = clipRef.current[index];
       if (old) {
-        nodes.current.get(old.video)?.disconnect();
-        nodes.current.delete(old.video);
         disposeClip(old);
       }
       const next = [...clipRef.current];
@@ -275,8 +285,6 @@ export default function Home() {
       if (!mounted.current) throw new DOMException('已取消', 'AbortError');
       clipRef.current.forEach((c) => {
         if (c) {
-          nodes.current.get(c.video)?.disconnect();
-          nodes.current.delete(c.video);
           disposeClip(c);
         }
       });
@@ -437,12 +445,24 @@ export default function Home() {
     el.addEventListener('pointercancel', up);
   }
   async function fuse() {
-    if (!aligned || !clips[0] || !clips[1] || seeking || !start('融合影片中…'))
+    if (!aligned || !clips[0] || !clips[1] || seeking || busyRef.current)
       return;
-    clearResult();
-    setProgress(0);
+    flushSync(() => {
+      start('融合影片中…');
+      clearResult();
+      setProgress(0);
+      setExportPhase('preparing');
+      setExportMessage('正在啟動影片與音訊…');
+    });
+    let jobContext: AudioContext | null = null;
     try {
-      context.current ??= new AudioContext();
+      if (!exportDialog.current?.open) {
+        if (exportDialog.current?.showModal) exportDialog.current.showModal();
+        else exportDialog.current?.setAttribute('open', '');
+      }
+      // Stay in the tap gesture until resume() and both play() calls are issued.
+      jobContext = new AudioContext();
+      context.current = jobContext;
       const blob = await renderMovie({
         clips: clips as Clip[],
         boxes,
@@ -451,43 +471,71 @@ export default function Home() {
         width: dims[0],
         height: dims[1],
         audio,
-        context: context.current,
-        nodes: nodes.current,
+        context: jobContext,
+        canvas: exportCanvas.current!,
+        sourceHost: sourceHost.current!,
         signal: controller.current!.signal,
         onProgress: setProgress,
+        onStage: (phase, message) => {
+          setExportPhase(phase);
+          setExportMessage(message);
+        },
       });
       const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
       const file = new File(
         [blob],
-        `合拍-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`,
+        '合拍-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + ext,
         { type: blob.type },
       );
       const url = URL.createObjectURL(blob);
       resultRef.current = url;
       setResult({ url, blob, file });
+      setExportPhase('done');
+      setExportMessage('融合完成，可以預覽、分享或下載。');
       setMessage('融合完成！播放確認後，即可分享或下載。');
-      await updateFrames(0);
     } catch (e) {
+      const cancelled = e instanceof DOMException && e.name === 'AbortError';
+      setExportPhase(cancelled ? 'cancelled' : 'error');
+      setExportMessage(
+        cancelled
+          ? '已取消融合，原始影片和配置仍保留。'
+          : e instanceof Error
+            ? e.message
+            : '融合失敗，請再試一次。',
+      );
       report(e);
     } finally {
+      if (jobContext) void jobContext.close().catch(() => {});
+      context.current = null;
       end();
     }
   }
   async function share() {
     if (!result) return;
+    const notifyShare = (message: string) => {
+      setMessage(message);
+      setExportMessage(message);
+    };
     try {
       if (navigator.canShare?.({ files: [result.file] })) {
         await navigator.share({ files: [result.file] });
-        setMessage('已關閉分享選單；是否存入照片，請在「照片」App 確認。');
+        notifyShare('已關閉分享選單；是否存入照片，請在「照片」App 確認。');
       } else
-        setMessage(
+        notifyShare(
           '此瀏覽器無法分享檔案，請先下載，再從「檔案」App 開啟分享並選擇儲存影片。',
         );
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === 'AbortError')) report(e);
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        report(e);
+        setExportMessage(
+          e instanceof Error ? e.message : '分享失敗，請改用下載影片。',
+        );
+      }
     }
   }
   const locked = !!busy || seeking;
+  const exporting =
+    !!busy && ['preparing', 'recording', 'finalizing'].includes(exportPhase);
   return (
     <main>
       <header className="topbar">
@@ -951,6 +999,23 @@ export default function Home() {
               </div>
             </div>
           )}
+          <div className="export-quality">
+            <label>
+              輸出畫質
+              <select
+                value={quality}
+                disabled={locked}
+                onChange={(e) => {
+                  setQuality(e.target.value);
+                  clearResult();
+                }}
+              >
+                <option value="720">標準 720p</option>
+                <option value="480">省電 480p</option>
+              </select>
+            </label>
+            <span>融合較吃力時，可選 480p 降低輸出負擔。</span>
+          </div>
           <div className="editor-foot">
             <span>
               {aligned && plan
@@ -1014,6 +1079,123 @@ export default function Home() {
           </p>
         </section>
       )}
+      <dialog
+        ref={exportDialog}
+        className="export-dialog"
+        aria-labelledby="export-title"
+        onCancel={(e) => {
+          if (exporting) {
+            e.preventDefault();
+            controller.current?.abort();
+          }
+        }}
+      >
+        <div className="export-dialog-head">
+          <h2 id="export-title">
+            {exportPhase === 'done'
+              ? '融合完成'
+              : exportPhase === 'error'
+                ? '無法完成融合'
+                : exportPhase === 'cancelled'
+                  ? '已取消融合'
+                  : '正在融合影片'}
+          </h2>
+          {!exporting && (
+            <button
+              aria-label="關閉融合視窗"
+              className="small-button"
+              onClick={() => exportDialog.current?.close()}
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+        <p
+          className={exportPhase === 'error' ? 'export-error' : 'hint'}
+          role={exportPhase === 'error' ? 'alert' : undefined}
+        >
+          {exportMessage}
+        </p>
+        {exporting && plan && (
+          <p className="export-trim">
+            先裁切再融合：A 從 {sec(plan.starts[0])} 開始；B 從{' '}
+            {sec(plan.starts[1])} 開始。
+          </p>
+        )}
+        <div className="export-canvas-wrap" hidden={!exporting}>
+          <canvas ref={exportCanvas} aria-label="正在融合的即時畫面" />
+        </div>
+        <div
+          ref={sourceHost}
+          className="export-sources"
+          hidden={!exporting}
+          aria-label="來源影片播放"
+        />
+        {exporting && (
+          <>
+            <div className="export-progress">
+              <progress aria-label="融合進度" max="1" value={progress} />
+              <output aria-live="polite">{Math.round(progress * 100)}%</output>
+            </div>
+            <p className="hint">
+              {exportPhase === 'preparing'
+                ? '準備完成後會開始顯示影片進度。'
+                : exportPhase === 'finalizing'
+                  ? '正在寫入影片檔案，請稍候。'
+                  : '請保持網站在前景，勿鎖定螢幕。'}
+            </p>
+            <button
+              className="secondary"
+              onClick={() => controller.current?.abort()}
+            >
+              取消融合
+            </button>
+          </>
+        )}
+        {exportPhase === 'done' && result && (
+          <>
+            <video
+              className="result-video"
+              src={result.url}
+              controls
+              playsInline
+              preload="metadata"
+            />
+            <div className="result-actions">
+              <button className="primary" onClick={share}>
+                <Share2 size={18} />
+                分享／儲存到照片
+              </button>
+              <a
+                className="download"
+                href={result.url}
+                download={result.file.name}
+              >
+                <Download size={18} />
+                下載影片
+              </a>
+            </div>
+            <p className="hint">
+              在 iPhone 分享選單選「儲存影片」。
+              {!result.blob.type.includes('mp4') &&
+                ' 目前輸出為 WebM，照片可能不接受；可先下載檔案。'}
+            </p>
+          </>
+        )}
+        {(exportPhase === 'error' || exportPhase === 'cancelled') && (
+          <div className="result-actions">
+            <button className="primary" onClick={fuse} disabled={locked}>
+              再試一次
+            </button>
+            <button
+              className="secondary"
+              onClick={() => exportDialog.current?.close()}
+            >
+              返回調整
+            </button>
+          </div>
+        )}
+      </dialog>
       <footer>
         <span>聲音對齊。畫面由你決定。</span>
         <span>為 iPhone 而設計 ↗</span>

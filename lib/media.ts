@@ -1,4 +1,4 @@
-import { timeline, isClipActive } from './timeline.mjs';
+import { isClipActive } from './timeline.mjs';
 export type Clip = {
   file: File;
   url: string;
@@ -17,17 +17,20 @@ export function waitEvent(
   target: HTMLVideoElement,
   event: string,
   action?: () => void,
+  signal?: AbortSignal,
 ) {
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(
       () => finish(new Error('影片讀取逾時，請重新選擇影片。')),
       20000,
     );
+    const abort = () => finish(new DOMException('已取消', 'AbortError'));
     const good = () => finish();
     const bad = () =>
       finish(new Error('Safari 無法讀取這段影片，請先轉成 H.264 MP4。'));
     function finish(error?: Error) {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', abort);
       target.removeEventListener(event, good);
       target.removeEventListener('error', bad);
       if (error) reject(error);
@@ -35,16 +38,31 @@ export function waitEvent(
     }
     target.addEventListener(event, good, { once: true });
     target.addEventListener('error', bad, { once: true });
-    action?.();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) return abort();
+    try {
+      action?.();
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error('影片操作失敗'));
+    }
   });
 }
-export async function seek(video: HTMLVideoElement, time: number) {
+export async function seek(
+  video: HTMLVideoElement,
+  time: number,
+  signal?: AbortSignal,
+) {
   const target = Math.max(0, Math.min(time, video.duration - 0.001));
   if (Math.abs(video.currentTime - target) < 0.002 && video.readyState >= 2)
     return;
-  await waitEvent(video, 'seeked', () => {
-    video.currentTime = target;
-  });
+  await waitEvent(
+    video,
+    'seeked',
+    () => {
+      video.currentTime = target;
+    },
+    signal,
+  );
 }
 export function snapshot(video: HTMLVideoElement) {
   const c = document.createElement('canvas');
@@ -178,183 +196,4 @@ export function supportedMime() {
       'video/webm',
     ].find((m) => MediaRecorder.isTypeSupported(m)) ?? ''
   );
-}
-export async function renderMovie(args: {
-  clips: Clip[];
-  boxes: Box[];
-  order: number[];
-  offset: number;
-  width: number;
-  height: number;
-  audio: number;
-  context: AudioContext;
-  nodes: Map<HTMLVideoElement, MediaElementAudioSourceNode>;
-  signal: AbortSignal;
-  onProgress: (n: number) => void;
-}): Promise<Blob> {
-  const {
-    clips,
-    boxes,
-    order,
-    offset,
-    width,
-    height,
-    audio,
-    context,
-    nodes,
-    signal,
-    onProgress,
-  } = args;
-  const mime = supportedMime();
-  if (!mime)
-    throw new Error('這個瀏覽器不支援影片輸出，請用最新版 iPhone Safari。');
-  const plan = timeline(clips[0].duration, clips[1].duration, offset),
-    canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
-  if (!canvas.captureStream) throw new Error('瀏覽器不支援畫面錄製。');
-  const destination = context.createMediaStreamDestination(),
-    gains: GainNode[] = [];
-  let stream: MediaStream | undefined;
-  let recorder: MediaRecorder | undefined;
-  let wake: { release: () => Promise<void> } | undefined;
-  try {
-    // Resume and prime both media elements directly in the user's gesture.
-    const resumed = context.resume();
-    const primed = clips.map((clip) => {
-      let source = nodes.get(clip.video);
-      if (!source) {
-        source = context.createMediaElementSource(clip.video);
-        nodes.set(clip.video, source);
-      }
-      const gain = context.createGain();
-      gain.gain.value = 0;
-      source.connect(gain);
-      gain.connect(destination);
-      gains.push(gain);
-      clip.video.muted = false;
-      return clip.video.play();
-    });
-    await Promise.all([resumed, ...primed]);
-    clips.forEach((c) => c.video.pause());
-    await Promise.all(clips.map((c, i) => seek(c.video, plan.starts[i])));
-    if (signal.aborted) throw new DOMException('已取消', 'AbortError');
-    try {
-      wake = await navigator.wakeLock?.request('screen');
-    } catch {
-      /* Screen wake lock is optional. */
-    }
-    drawComposition(ctx, clips, boxes, width, height, 0, plan.remaining, order);
-    stream = canvas.captureStream(30);
-    for (const track of destination.stream.getAudioTracks())
-      stream.addTrack(track);
-    recorder = new MediaRecorder(stream, {
-      mimeType: mime,
-      videoBitsPerSecond: 4_000_000,
-      audioBitsPerSecond: 128_000,
-    });
-    const chunks: BlobPart[] = [];
-    recorder.ondataavailable = (e) => {
-      if (e.data.size) chunks.push(e.data);
-    };
-    const finished = new Promise<Blob>((resolve, reject) => {
-      recorder!.onstop = () =>
-        resolve(new Blob(chunks, { type: recorder!.mimeType }));
-      recorder!.onerror = () =>
-        reject(new Error('影片編碼失敗，請嘗試較短的影片。'));
-    });
-    // Attach an early rejection handler while frames are still being rendered.
-    void finished.catch(() => {});
-    const master = plan.remaining[0] >= plan.remaining[1] ? 0 : 1;
-    await Promise.all(clips.map((c) => c.video.play()));
-    gains[audio].gain.value = 1;
-    recorder.start(1000);
-    await new Promise<void>((resolve, reject) => {
-      let raf = 0,
-        ended = false,
-        lastAdvance = performance.now(),
-        lastTime = -1;
-      const clean = () => {
-        ended = true;
-        cancelAnimationFrame(raf);
-        clearTimeout(deadline);
-        signal.removeEventListener('abort', abort);
-        document.removeEventListener('visibilitychange', visibility);
-      };
-      const fail = (error: Error) => {
-        if (ended) return;
-        clean();
-        reject(error);
-      };
-      const abort = () => fail(new DOMException('已取消', 'AbortError'));
-      const visibility = () => {
-        if (document.hidden)
-          fail(new Error('輸出已中止：請保持 Safari 在前景並重新融合。'));
-      };
-      const deadline = setTimeout(
-        () => fail(new Error('播放中斷，請重新融合並保持畫面開啟。')),
-        (plan.duration + 25) * 1000,
-      );
-      signal.addEventListener('abort', abort, { once: true });
-      document.addEventListener('visibilitychange', visibility);
-      function frame() {
-        if (ended) return;
-        if (signal.aborted) return abort();
-        const elapsed = Math.max(
-          0,
-          clips[master].video.currentTime - plan.starts[master],
-        );
-        if (elapsed > lastTime + 0.005) {
-          lastAdvance = performance.now();
-          lastTime = elapsed;
-        } else if (performance.now() - lastAdvance > 1800)
-          return fail(new Error('影片播放停頓，請降低影片解析度後重試。'));
-        const other = 1 - master;
-        if (elapsed < plan.remaining[other] - 0.12) {
-          const drift =
-            clips[other].video.currentTime - plan.starts[other] - elapsed;
-          if (Math.abs(drift) > 0.25)
-            return fail(new Error('裝置播放速度不足，請改用較低解析度影片。'));
-          clips[other].video.playbackRate =
-            Math.abs(drift) > 0.035 ? (drift > 0 ? 0.96 : 1.04) : 1;
-        }
-        drawComposition(
-          ctx,
-          clips,
-          boxes,
-          width,
-          height,
-          elapsed,
-          plan.remaining,
-          order,
-        );
-        onProgress(Math.min(1, elapsed / plan.duration));
-        if (clips[master].video.ended || elapsed >= plan.duration - 0.015) {
-          clean();
-          resolve();
-        } else raf = requestAnimationFrame(frame);
-      }
-      frame();
-    });
-    gains.forEach((g) => (g.gain.value = 0));
-    recorder.stop();
-    const blob = await finished;
-    if (blob.size < 1000) throw new Error('沒有產生有效的影片，請重試。');
-    return blob;
-  } finally {
-    if (recorder && recorder.state !== 'inactive') recorder.stop();
-    stream?.getTracks().forEach((t) => t.stop());
-    destination.stream.getTracks().forEach((t) => t.stop());
-    gains.forEach((g, i) => {
-      nodes.get(clips[i].video)?.disconnect(g);
-      g.disconnect();
-    });
-    clips.forEach((c) => {
-      c.video.pause();
-      c.video.muted = true;
-      c.video.playbackRate = 1;
-    });
-    await wake?.release().catch(() => {});
-  }
 }

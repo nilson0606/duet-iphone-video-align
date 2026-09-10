@@ -1047,3 +1047,143 @@ button.video-box:not(:disabled):hover {
   align-items: center;
   justify-content: center;
 }
+.export-quality {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+}
+.export-quality label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.export-quality span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.export-quality select {
+  font-size: 14px;
+}
+.export-dialog {
+  width: min(620px, calc(100vw - 28px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  border: 1px solid #617947;
+  border-radius: 15px;
+  padding: 22px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 20px 100px #000a;
+}
+.export-dialog::backdrop {
+  background: #030907dd;
+}
+.export-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.export-dialog-head h2 {
+  font-size: 22px;
+}
+.export-dialog > p {
+  margin: 12px 0;
+}
+.export-canvas-wrap {
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.export-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  max-height: 38dvh;
+  object-fit: contain;
+}
+.export-sources {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 8px 0;
+}
+.export-sources[hidden],
+.export-canvas-wrap[hidden] {
+  display: none;
+}
+.export-sources .processing-video {
+  position: static;
+  width: 72px;
+  height: 42px;
+  opacity: 1;
+  pointer-events: none;
+  object-fit: contain;
+  background: #000;
+}
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.export-progress progress {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--lime);
+  height: 9px;
+}
+.export-progress output {
+  font: 16px monospace;
+  min-width: 45px;
+}
+.export-dialog > .secondary {
+  width: 100%;
+  margin-top: 14px;
+}
+.export-error {
+  font-size: 15px;
+  line-height: 1.7;
+  background: #382420;
+  color: #ffc2b5;
+  border-radius: 7px;
+  padding: 12px;
+}
+.export-dialog .result-video {
+  max-height: 45dvh;
+  margin: 14px 0;
+}
+.export-dialog .result-actions {
+  margin-top: 15px;
+}
+@media (max-width: 760px) {
+  .export-quality {
+    padding: 14px 16px;
+  }
+  .export-dialog {
+    padding: 17px;
+  }
+  .export-dialog-head h2 {
+    font-size: 19px;
+  }
+  .export-dialog .result-actions {
+    flex-direction: column;
+  }
+  .export-dialog .result-actions > * {
+    width: 100%;
+  }
+}
+.export-trim {
+  padding: 10px;
+  border-radius: 6px;
+  background: #293324;
+  color: #dcebd0;
+  font-size: 13px;
+}
