@@ -1,9 +1,13 @@
 'use client';
 /* oxlint-disable jsx-a11y/media-has-caption -- User videos used only for independent audio audition. */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuditionPlayer } from '../lib/audition-player';
+import { captureClipAudio } from '../lib/capture-audio';
+import type { Clip } from '../lib/media';
+// oxlint-disable-next-line import/default -- Vite emits a browser worker URL.
+import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
 
-type Source = { url: string; duration: number } | null;
+type Source = { file: File; url: string; duration: number } | null;
 const names = ['A', 'B'];
 const seconds = (n: number) => `${n.toFixed(2)} 秒`;
 export function AudioAudition({
@@ -15,6 +19,9 @@ export function AudioAudition({
 }) {
   const videos = useRef<(HTMLVideoElement | null)[]>([null, null]);
   const player = useRef<AuditionPlayer | null>(null);
+  const initialSources = useRef(sources);
+  const analysisHost = useRef<HTMLDivElement>(null);
+  const [preparation, setPreparation] = useState('');
   const [playing, setPlaying] = useState([false, false]);
   const [positions, setPositions] = useState([0, 0]);
   const [ready, setReady] = useState([false, false]);
@@ -23,35 +30,81 @@ export function AudioAudition({
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState('');
   const mounted = useRef(true);
+  const update = useCallback((index: number) => {
+    const video = videos.current[index];
+    if (!video || !mounted.current) return;
+    setPlaying((old) =>
+      old.map((value, i) =>
+        i === index ? (player.current?.isPlaying(index) ?? false) : value,
+      ),
+    );
+    setPositions((old) =>
+      old.map((value, i) =>
+        i === index
+          ? (player.current?.position(index) ?? video.currentTime)
+          : value,
+      ),
+    );
+  }, []);
   useEffect(() => {
     mounted.current = true;
-    player.current = new AuditionPlayer(videos.current.slice());
+    const clips = initialSources.current.map((source, index) =>
+      source
+        ? ({
+            ...source,
+            video: videos.current[index]!,
+            mono: null,
+            peaks: [],
+            width: 1,
+            height: 1,
+            thumbnail: '',
+          } as Clip)
+        : null,
+    );
+    player.current = new AuditionPlayer(
+      videos.current.slice(),
+      undefined,
+      async (context, signal) => {
+        await captureClipAudio(
+          clips.filter((clip): clip is Clip => !!clip),
+          context,
+          signal,
+          (index, progress, method) => {
+            if (mounted.current)
+              setPreparation(
+                `${method === 'fast' ? '快速讀取' : '相容模式讀取'}影片 ${names[index]} 聲音 ${Math.round(progress * 100)}%`,
+              );
+          },
+          analysisHost.current!,
+          () =>
+            new Worker(new URL(decodeWorkerUrl, window.location.href), {
+              type: 'module',
+            }),
+        );
+        return clips.map((clip) => clip!.mono!);
+      },
+    );
+    const tick = setInterval(() => {
+      for (const index of [0, 1]) {
+        player.current?.syncPreview(index);
+        update(index);
+      }
+    }, 100);
     const hide = () => {
       if (document.hidden) player.current?.pauseAll();
     };
     document.addEventListener('visibilitychange', hide);
     return () => {
       mounted.current = false;
+      clearInterval(tick);
       document.removeEventListener('visibilitychange', hide);
       player.current?.dispose();
       player.current = null;
     };
-  }, []);
+  }, [update]);
   useEffect(() => {
     if (disabled) player.current?.pauseAll();
   }, [disabled]);
-  function update(index: number) {
-    const video = videos.current[index];
-    if (!video || !mounted.current) return;
-    setPlaying((old) =>
-      old.map((value, i) =>
-        i === index ? !video.paused && !video.ended : value,
-      ),
-    );
-    setPositions((old) =>
-      old.map((value, i) => (i === index ? video.currentTime : value)),
-    );
-  }
   async function play(index?: number) {
     if (disabled || preparing || !player.current) return;
     setError('');
@@ -79,7 +132,10 @@ export function AudioAudition({
           error instanceof Error ? error.message : '試聽無法播放，請重試。',
         );
     } finally {
-      if (mounted.current) setPreparing(false);
+      if (mounted.current) {
+        setPreparing(false);
+        setPreparation('');
+      }
     }
   }
   const locked = disabled || preparing;
@@ -191,7 +247,17 @@ export function AudioAudition({
           全部暫停
         </button>
       </div>
-      <p className="hint">同時播放會從指定位置開始，並播放兩邊的聲音。</p>
+      <p className="hint">
+        同時播放會從指定位置開始。首次需準備聲音；相容模式會依序讀取兩部影片，完成後可直接重播。
+      </p>
+      <div
+        ref={analysisHost}
+        className="audition-analysis"
+        hidden={!preparing}
+      />
+      {preparation && (
+        <output className="hint">{preparation}，請保持畫面開啟。</output>
+      )}
       {error && (
         <p className="audition-error" role="alert">
           {error}

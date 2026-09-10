@@ -1589,3 +1589,14 @@ button.video-box:not(:disabled):hover {
   color: #ffb3a7;
   font-size: 0.875rem;
 }
+
+.audition-analysis:not([hidden]) {
+  display: flex;
+  gap: 8px;
+}
+.audition-analysis video {
+  width: calc(50% - 4px);
+  height: 80px;
+  position: static;
+  object-fit: contain;
+}

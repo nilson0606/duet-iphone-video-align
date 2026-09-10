@@ -848,7 +848,9 @@ export default function Home() {
             <AudioAudition
               key={clips.map((clip) => clip?.url ?? '').join('|')}
               sources={clips.map((clip) =>
-                clip ? { url: clip.url, duration: clip.duration } : null,
+                clip
+                  ? { file: clip.file, url: clip.url, duration: clip.duration }
+                  : null,
               )}
               disabled={!!busy}
             />
