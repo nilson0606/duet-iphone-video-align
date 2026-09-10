@@ -1,5 +1,7 @@
+import type { Crop } from './crop.ts';
 import { isClipActive } from './timeline.mjs';
 export type Clip = {
+  crop?: Crop;
   file: File;
   url: string;
   video: HTMLVideoElement;
@@ -177,9 +179,23 @@ export function drawComposition(
       w = Math.round(box.width * width),
       h = Math.round(box.height * height);
     // A finished clip explicitly paints black even when it overlaps another clip.
-    if (isClipActive(elapsed, remaining[i]))
-      ctx.drawImage(clips[i].video, x, y, w, h);
-    else {
+    if (isClipActive(elapsed, remaining[i])) {
+      const clip = clips[i],
+        crop = clip.crop;
+      if (crop)
+        ctx.drawImage(
+          clip.video,
+          crop.x * clip.width,
+          crop.y * clip.height,
+          crop.width * clip.width,
+          crop.height * clip.height,
+          x,
+          y,
+          w,
+          h,
+        );
+      else ctx.drawImage(clip.video, x, y, w, h);
+    } else {
       ctx.fillStyle = '#000';
       ctx.fillRect(x, y, w, h);
     }

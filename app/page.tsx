@@ -3,6 +3,8 @@
 /* oxlint-disable jsx-a11y/media-has-caption -- This is a user-supplied video editing preview; no caption track is available. */
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { CropEditor } from './crop-editor';
+import { FULL_CROP, cropImageStyle, type Crop } from '../lib/crop';
 import { renderMovie, type ExportPhase } from '../lib/render-movie';
 import {
   Layers2,
@@ -213,7 +215,8 @@ export default function Home() {
     const aspect = w / h;
     const fit = (i: number, x: number, y: number, cw: number, ch: number) => {
       const c = items[i];
-      const r = c ? c.width / c.height : 16 / 9;
+      const crop = c?.crop ?? FULL_CROP;
+      const r = c ? (c.width * crop.width) / (c.height * crop.height) : 16 / 9;
       let width = cw,
         height = (width * aspect) / r;
       if (height > ch) {
@@ -386,6 +389,29 @@ export default function Home() {
       busyRef.current = false;
       setSeeking(false);
     }
+  }
+  function applyCrop(crop: Crop) {
+    if (busyRef.current || seeking) return;
+    const clip = clipRef.current[selected];
+    if (!clip) return;
+    const previous = clip.crop ?? FULL_CROP;
+    const next = clipRef.current.map((c, i) =>
+      i === selected ? { ...clip, crop } : c,
+    );
+    clipRef.current = next;
+    setClips(next);
+    setBoxes((old) =>
+      old.map((b, i) => {
+        if (i !== selected) return b;
+        const width = (b.width * crop.width) / previous.width;
+        const height = (b.height * crop.height) / previous.height;
+        return { ...b, width, height };
+      }),
+    );
+    clearResult();
+    setMessage(
+      '已套用影片 ' + names[selected] + ' 的畫面裁切，可繼續調整大小與位置。',
+    );
   }
   function changeBox(next: Box) {
     setBoxes((old) => old.map((b, i) => (i === selected ? next : b)));
@@ -810,11 +836,14 @@ export default function Home() {
                       }}
                     >
                       {!black && (
-                        <img
-                          src={clips[i]!.thumbnail}
-                          draggable={false}
-                          alt={`對齊後影片 ${names[i]} 的畫面`}
-                        />
+                        <span className="cropped-frame">
+                          <img
+                            src={clips[i]!.thumbnail}
+                            draggable={false}
+                            style={cropImageStyle(clips[i]!.crop ?? FULL_CROP)}
+                            alt={`對齊後影片 ${names[i]} 的畫面`}
+                          />
+                        </span>
                       )}
                       <span className={`clip-badge ${names[i]}`}>
                         {names[i]}
@@ -927,6 +956,17 @@ export default function Home() {
                   移到最上層
                 </button>
               </div>
+              <CropEditor
+                key={
+                  clips[selected]!.url + JSON.stringify(clips[selected]!.crop)
+                }
+                name={names[selected]}
+                thumbnail={clips[selected]!.thumbnail}
+                aspect={clips[selected]!.width / clips[selected]!.height}
+                crop={clips[selected]!.crop ?? FULL_CROP}
+                disabled={locked}
+                onApply={applyCrop}
+              />
               <p className="hint resize-help">
                 左右把手只改寬度，上下把手只改高度；右下角依「鎖定比例」縮放。超出畫布的部分會裁切。
               </p>
