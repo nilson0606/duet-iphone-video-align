@@ -78,13 +78,8 @@ const b = decode('public/demo/camera-b.mp4');
 for (const matchSeconds of [0, 1, 2, 3, 4, 5]) {
   self.onmessage({ data: { a, b, rate: 16000, matchSeconds } });
   assert.equal(reply?.error, undefined);
-  if (matchSeconds === 1) {
-    // This noisy opening has an ambiguous first second; do not confirm a wrong lag.
-    assert.equal(reply.result.confident, false);
-  } else {
-    assert.ok(Math.abs(reply.result.offset - 2.34) < 0.04);
-    assert.equal(reply.result.confident, true);
-  }
+  assert.ok(Math.abs(reply.result.offset - 2.34) < 0.04);
+  assert.equal(reply.result.confident, true);
 }
 console.log('Compiled worker passed all six matching-duration options.');
 
@@ -112,3 +107,15 @@ assert.ok(
 console.log(
   'Player audio processor is packaged; no whole-movie decode remains in the client.',
 );
+
+const mutedA = a.slice(),
+  mutedB = b.slice();
+mutedA.fill(0, 0, Math.round(0.18 * 16000));
+mutedB.fill(0, 0, Math.round(0.12 * 16000));
+for (const matchSeconds of [0, 5]) {
+  self.onmessage({ data: { a: mutedA, b: mutedB, rate: 16000, matchSeconds } });
+  assert.equal(reply?.error, undefined);
+  assert.equal(reply.result.confident, true);
+  assert.ok(Math.abs(reply.result.offset - 2.34) < 0.04, JSON.stringify(reply));
+}
+console.log('Compiled worker ignores the false 60 ms startup-silence match.');

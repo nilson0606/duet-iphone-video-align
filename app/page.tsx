@@ -343,7 +343,7 @@ export default function Home() {
       !start(
         matchSeconds === 0
           ? '尋找音訊對齊點…'
-          : `比對前段 ${matchSeconds} 秒音訊…`,
+          : `比對全段音樂，以 ${matchSeconds} 秒片段確認…`,
       )
     )
       return;
@@ -362,7 +362,7 @@ export default function Home() {
       setBusy(
         matchSeconds === 0
           ? '尋找音訊對齊點…'
-          : `比對前段 ${matchSeconds} 秒音訊…`,
+          : `比對全段音樂，以 ${matchSeconds} 秒片段確認…`,
       );
       const result = await alignClips(
         clips[0],
@@ -703,7 +703,7 @@ export default function Home() {
             disabled={locked}
             aria-describedby="match-length-hint"
           >
-            <legend>前段音訊比對長度</legend>
+            <legend>音樂確認片段長度</legend>
             <div className="match-options-row">
               {[0, 1, 2, 3, 4, 5].map((seconds) => (
                 <label key={seconds}>
@@ -720,9 +720,9 @@ export default function Home() {
             </div>
             <p className="hint" id="match-length-hint">
               {matchSeconds === 0
-                ? '預設 0 秒：找到明確對齊點即成功，後段不需一致。'
-                : `只比對對齊起點後的前 ${matchSeconds} 秒，後段不需一致。`}
-              不 match 或結果不理想，可換秒數再按「用音訊自動對齊」。
+                ? '全段音樂找時間差，0 秒自動選擇明確片段確認。'
+                : `全段音樂找時間差，再用 ${matchSeconds} 秒片段確認。`}
+              局部拍手、說話或尾段不同，不會直接否決。結果不理想可換秒數重試。
             </p>
           </fieldset>
           <div

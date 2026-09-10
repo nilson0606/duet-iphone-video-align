@@ -39,11 +39,13 @@ test('matching opening survives a silent tail', () => {
   assert.ok(result.confident, JSON.stringify(result));
 });
 
-test('matching only later audio does not count as an opening match', () => {
+test('whole-track search accepts a clear later match even when the opening differs', () => {
   const a = noise(60, 44),
     b = noise(60, 55);
   copyMatch(a, b, 500, 500, 2500);
-  assert.equal(alignFeatures(a, b).confident, false);
+  const result = alignFeatures(a, b);
+  assert.equal(result.confident, true);
+  assert.equal(result.offset, 0);
 });
 
 test('repeated opening with competing offsets remains uncertain', () => {
@@ -119,4 +121,20 @@ test('zero mode rejects unrelated long recordings and silence', () => {
   );
   const silence = Array.from({ length: 6 }, () => new Float32Array(500));
   assert.equal(alignFeatures(silence, silence, 0).confident, false);
+});
+
+test('whole-track search finds a two-second offset from a middle segment with different opening and tails', () => {
+  const a = noise(90, 211),
+    b = noise(85, 223);
+  copyMatch(a, b, 22 * FEATURE_RATE, 20 * FEATURE_RATE, 10 * FEATURE_RATE);
+  for (const seconds of [0, 1, 2, 3, 4, 5]) {
+    for (const [x, y, expected] of [
+      [a, b, 2],
+      [b, a, -2],
+    ]) {
+      const result = alignFeatures(x, y, seconds);
+      assert.equal(result.confident, true, JSON.stringify(result));
+      assert.equal(result.offset, expected);
+    }
+  }
 });

@@ -138,3 +138,96 @@ test('FFT inverse preserves signal', () => {
   assert.ok(Math.abs(r[2] - 3) < 1e-9);
   assert.ok(Math.abs(r[3] + 1) < 1e-9);
 });
+
+test('startup silence must not replace the real music offset with a 60 ms mute-boundary match', () => {
+  const samplesA = decode('public/demo/camera-a.mp4');
+  const samplesB = decode('public/demo/camera-b.mp4');
+  for (const [silentA, silentB] of [
+    [0.18, 0.12],
+    [0.04, 0.1],
+    [0.3, 0.36],
+  ]) {
+    const x = samplesA.slice(),
+      y = samplesB.slice();
+    x.fill(0, 0, Math.round(silentA * 16000));
+    y.fill(0, 0, Math.round(silentB * 16000));
+    const fa = fingerprints(x, 16000),
+      fb = fingerprints(y, 16000);
+    for (const seconds of [0, 2, 3, 4, 5]) {
+      for (const [a, b, expected] of [
+        [fa, fb, 2.34],
+        [fb, fa, -2.34],
+      ]) {
+        const result = alignFeatures(a, b, seconds);
+        assert.ok(
+          result.confident,
+          JSON.stringify({ silentA, silentB, seconds, result }),
+        );
+        assert.ok(
+          Math.abs(result.offset - expected) < 1 / 30,
+          JSON.stringify({ silentA, silentB, seconds, result }),
+        );
+      }
+    }
+  }
+});
+
+test('unrelated audio after a common digital silence edge is never a confirmed match', () => {
+  let seed = 778;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return (seed / 2147483648 - 1) * 0.2;
+  };
+  const a = Float32Array.from({ length: 16000 * 12 }, random);
+  const b = Float32Array.from({ length: 16000 * 12 }, random);
+  a.fill(0, 0, 16000 * 0.18);
+  b.fill(0, 0, 16000 * 0.12);
+  const fa = fingerprints(a, 16000),
+    fb = fingerprints(b, 16000);
+  for (const seconds of [0, 1, 2, 3, 4, 5])
+    assert.equal(alignFeatures(fa, fb, seconds).confident, false);
+});
+
+test('an exact two-second audio offset survives a 60 ms difference in startup silence', () => {
+  const a = decode('public/demo/camera-a.mp4');
+  const b = a.slice(2 * 16000);
+  a.fill(0, 0, Math.round(0.18 * 16000));
+  b.fill(0, 0, Math.round(0.12 * 16000));
+  const result = alignFeatures(fingerprints(a, 16000), fingerprints(b, 16000));
+  assert.equal(result.confident, true);
+  assert.equal(result.offset, 2);
+});
+
+test('the same music still aligns with intermittent speech-like tones and claps over one recording', () => {
+  const a = decode('public/demo/camera-a.mp4');
+  const b = decode('public/demo/camera-b.mp4');
+  let seed = 981;
+  for (let i = 0; i < b.length; i++) {
+    const t = i / 16000;
+    if ((t > 0.7 && t < 2.5) || (t > 5 && t < 7)) {
+      const syllable = Math.pow(Math.sin(2 * Math.PI * 3 * t), 2);
+      b[i] +=
+        0.15 *
+        syllable *
+        (Math.sin(2 * Math.PI * 190 * t) +
+          0.5 * Math.sin(2 * Math.PI * 730 * t));
+    }
+    for (const clap of [0.12, 3.4, 8.1]) {
+      const dt = t - clap;
+      if (dt >= 0 && dt < 0.08) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        b[i] += 0.6 * Math.exp(-dt * 60) * (seed / 2147483648 - 1);
+      }
+    }
+  }
+  const fa = fingerprints(a, 16000),
+    fb = fingerprints(b, 16000);
+  for (const seconds of [0, 1, 2, 3, 4, 5]) {
+    const result = alignFeatures(fa, fb, seconds);
+    assert.ok(result.confident, JSON.stringify({ seconds, result }));
+    assert.ok(
+      Math.abs(result.offset - 2.34) < 1 / 30,
+      JSON.stringify({ seconds, result }),
+    );
+  }
+});
