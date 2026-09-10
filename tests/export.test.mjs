@@ -35,6 +35,7 @@ function environment({
   startFault = false,
   stopPending = false,
   onTick,
+  frameStep = 0.05,
 } = {}) {
   const saved = {};
   const keys = [
@@ -63,10 +64,18 @@ function environment({
       this.readyState = 2;
       this.muted = true;
       this.paused = true;
+      this.rateAssignments = [];
       this.playbackRate = 1;
       this.parentNode = body;
       this.seeks = [];
       this.playCalls = 0;
+    }
+    get playbackRate() {
+      return this._rate;
+    }
+    set playbackRate(rate) {
+      this._rate = rate;
+      this.rateAssignments.push(rate);
     }
     get currentTime() {
       return this._time;
@@ -186,13 +195,14 @@ function environment({
     configurable: true,
     value: (cb) =>
       setTimeout(() => {
-        context.currentTime += 0.05;
-        for (const v of videos) if (!v.paused) v._time += 0.05 * v.playbackRate;
+        context.currentTime += frameStep;
+        for (const v of videos)
+          if (!v.paused) v._time += frameStep * v.playbackRate;
         if (recording && lag && !failedOnce) {
           videos[1]._time -= lag;
           failedOnce = true;
         }
-        onTick?.(context);
+        onTick?.(context, videos, recording);
         cb();
       }, 0),
   });
@@ -265,14 +275,15 @@ test('fusion produces progress and a finished video', async () => {
     env.restore();
   }
 });
-test('a temporary multi-second playback gap is corrected instead of rejected', async () => {
+test('fusion never seeks or changes speed after the initial trim, even with playback lag', async () => {
   const env = environment({ lag: 3, clockDuration: 2 });
   try {
     await renderMovie(env.args);
-    assert.ok(
-      env.videos[1].seeks.length >= 1,
-      'Lagging video must seek back to the music position',
-    );
+    for (const video of env.videos) {
+      assert.deepEqual(video.seeks, []);
+      assert.ok(video.rateAssignments.every((rate) => rate === 1));
+      assert.equal(video.playCalls, 2, 'Only startup priming and the final play');
+    }
     assert.equal(env.progress.at(-1), 1);
   } finally {
     env.restore();
@@ -284,7 +295,8 @@ test('trim offsets are applied before recording and to the chosen audio', async 
   env.args.audio = 1;
   try {
     await renderMovie(env.args);
-    assert.ok(env.videos[1].seeks.some((t) => t === 1));
+    assert.deepEqual(env.videos[1].seeks, [1]);
+    assert.deepEqual(env.videos[0].seeks, []);
     assert.equal(env.audioSource.starts[0][1], 1);
     assert.equal(env.audioSource.starts[0][2], 3);
     assert.ok(
@@ -300,7 +312,9 @@ test('large source offsets are cropped before playback', async () => {
   env.args.offset = 4;
   try {
     await renderMovie(env.args);
-    assert.equal(env.videos[0].seeks[0], 4);
+    assert.deepEqual(env.videos[0].seeks, [4]);
+    assert.deepEqual(env.videos[1].seeks, []);
+    assert.ok(env.videos.every((v) => v.rateAssignments.every((rate) => rate === 1)));
     assert.equal(env.audioSource.starts[0][1], 4);
   } finally {
     env.restore();
@@ -322,6 +336,40 @@ test('encoder startup failure is returned and tracks are released', async () => 
   try {
     await assert.rejects(renderMovie(env.args), /encoder start failed/);
     assert.ok(env.tracks.every((t) => t.stopped));
+  } finally {
+    env.restore();
+  }
+});
+
+test('120 Hz display composites only the 30 fps output frames', async () => {
+  const env = environment({ frameStep: 1 / 120, clockDuration: 1 });
+  try {
+    await renderMovie(env.args);
+    const frames = env.draws.filter(
+      (d) => d[0] === 'video' && d[1] === 0,
+    ).length;
+    assert.ok(frames <= 32, 'Too many composite frames: ' + frames);
+    assert.ok(frames >= 28);
+    assert.ok(env.progress.length <= 7);
+  } finally {
+    env.restore();
+  }
+});
+test('jittery playback does not trigger repeated decoder seeks during fusion', async () => {
+  const env = environment({
+    frameStep: 1 / 60,
+    clockDuration: 2,
+    onTick: (context, videos, recording) => {
+      if (recording)
+        videos[1]._time =
+          context.currentTime +
+          (Math.floor(context.currentTime * 60) % 2 ? 0.24 : -0.24);
+    },
+  });
+  try {
+    await renderMovie(env.args);
+    assert.equal(env.videos[1].seeks.length, 0);
+    assert.equal(env.progress.at(-1), 1);
   } finally {
     env.restore();
   }

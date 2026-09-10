@@ -74,7 +74,7 @@ export async function renderMovie(args: {
       throw new Error('此瀏覽器不支援影片輸出，請使用最新版 Safari。（E02）');
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { alpha: false })!;
     if (!ctx || !canvas.captureStream)
       throw new Error('此瀏覽器無法錄製合成畫面。（E03）');
     // Keep both decoders muted and visible. Safari can interrupt competing
@@ -132,7 +132,7 @@ export async function renderMovie(args: {
       .forEach((track) => stream!.addTrack(track));
     recorder = new MediaRecorder(stream, {
       mimeType: mime,
-      videoBitsPerSecond: 4_000_000,
+      videoBitsPerSecond: width * height <= 854 * 480 ? 1_600_000 : 3_500_000,
       audioBitsPerSecond: 128_000,
     });
     const chunks: BlobPart[] = [];
@@ -157,8 +157,8 @@ export async function renderMovie(args: {
       12000,
       '同步播放尚未啟動，請重新融合。（E10）',
     );
-    // The audio buffer is the master clock; neither video controls the output
-    // duration. Correct decoder drift instead of failing at a 250 ms difference.
+    // Both videos start at their fixed trim positions and run at normal speed.
+    // The audio clock controls duration and black tails, never decoder seeking.
     const startClock = context.currentTime;
     recorder.start(1000);
     const audioStart = plan.starts[audio];
@@ -168,13 +168,12 @@ export async function renderMovie(args: {
         audioStart,
         Math.min(buffer.duration - audioStart, plan.remaining[audio]),
       );
-    onStage('recording', '正在融合；請保持畫面開啟。');
+    onStage('recording', '已跳過未對齊的開頭，正在以原速融合；請保持畫面開啟。');
     await new Promise<void>((resolve, reject) => {
       let raf = 0,
         settled = false,
-        lastReport = -1;
-      const correcting = [false, false],
-        badSince: (number | null)[] = [null, null];
+        lastReport = -1,
+        nextDraw = 0;
       const cleanup = () => {
         settled = true;
         cancelAnimationFrame(raf);
@@ -203,58 +202,24 @@ export async function renderMovie(args: {
         }
         for (let i = 0; i < clips.length; i++) {
           const video = clips[i].video;
-          if (elapsed >= plan.remaining[i]) {
-            video.pause();
-            continue;
-          }
-          const target = plan.starts[i] + elapsed,
-            drift = video.currentTime - target;
-          if (Math.abs(drift) > 0.3) {
-            badSince[i] ??= performance.now();
-          } else badSince[i] = null;
-          if (badSince[i] !== null && performance.now() - badSince[i]! > 8000)
-            return fail(
-              new Error(
-                `影片 ${i === 0 ? 'A' : 'B'} 持續無法恢復同步，請返回調整並選「省電 480p」重試。（E12）`,
-              ),
-            );
-          if (!correcting[i] && (Math.abs(drift) > 0.18 || video.paused)) {
-            correcting[i] = true;
-            void seek(
-              video,
-              Math.min(target + 0.04, clips[i].duration - 0.04),
-              session.signal,
-            )
-              .then(() =>
-                run(video.play(), 6000, '影片同步播放未回應，請重試。（E13）'),
-              )
-              .then(() => {
-                correcting[i] = false;
-              })
-              .catch((error) => {
-                correcting[i] = false;
-                if (!settled)
-                  fail(
-                    error instanceof Error
-                      ? error
-                      : new Error('影片同步中斷。（E13）'),
-                  );
-              });
-          } else if (!correcting[i])
-            video.playbackRate =
-              Math.abs(drift) > 0.025 ? (drift > 0 ? 0.94 : 1.06) : 1;
+          if (elapsed >= plan.remaining[i] && !video.paused) video.pause();
         }
-        drawComposition(
-          ctx,
-          clips,
-          boxes,
-          width,
-          height,
-          elapsed,
-          plan.remaining,
-          order,
-        );
-        if (elapsed - lastReport >= 0.1) {
+        // A 60/120 Hz display does not need 60/120 canvas composites for a
+        // 30 fps recording. Avoid duplicate drawing and frequent React renders.
+        if (elapsed + 0.000001 >= nextDraw) {
+          drawComposition(
+            ctx,
+            clips,
+            boxes,
+            width,
+            height,
+            elapsed,
+            plan.remaining,
+            order,
+          );
+          nextDraw = (Math.floor(elapsed * 30 + 0.000001) + 1) / 30;
+        }
+        if (elapsed - lastReport >= 0.25) {
           onProgress(Math.min(0.99, elapsed / plan.duration));
           lastReport = elapsed;
         }
