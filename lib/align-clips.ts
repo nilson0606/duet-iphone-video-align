@@ -4,6 +4,7 @@ export function alignClips(
   b: Clip,
   signal: AbortSignal,
   createWorker: () => Worker,
+  matchSeconds = 0,
 ): Promise<{
   offset: number;
   score: number;
@@ -62,7 +63,10 @@ export function alignClips(
     try {
       const ac = a.mono.slice(),
         bc = b.mono.slice();
-      worker.postMessage({ a: ac, b: bc, rate: RATE }, [ac.buffer, bc.buffer]);
+      worker.postMessage({ a: ac, b: bc, rate: RATE, matchSeconds }, [
+        ac.buffer,
+        bc.buffer,
+      ]);
     } catch {
       finish(new Error('音訊資料無法送出，請改用較短的影片。（W04）'));
     }

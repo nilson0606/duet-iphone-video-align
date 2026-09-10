@@ -21,6 +21,7 @@ test('worker success preserves source samples and cleans up', async () => {
     b = clip(),
     worker = fakeWorker();
   const pending = alignClips(a, b, new AbortController().signal, () => worker);
+  assert.equal(worker.data.matchSeconds, 0);
   assert.notEqual(worker.data.a, a.mono);
   assert.deepEqual(worker.data.a, a.mono);
   const result = { offset: 2.34, score: 0.5, margin: 0.3, confident: true };
@@ -104,4 +105,20 @@ test('analysis error from worker preserves useful reason', async () => {
   worker.onmessage({ data: { error: '音訊太短' } });
   await assert.rejects(pending, /音訊太短/);
   assert.equal(worker.terminated, true);
+});
+
+test('selected matching duration reaches the worker', async () => {
+  for (const seconds of [0, 1, 2, 3, 4, 5]) {
+    const worker = fakeWorker();
+    const pending = alignClips(
+      clip(),
+      clip(),
+      new AbortController().signal,
+      () => worker,
+      seconds,
+    );
+    assert.equal(worker.data.matchSeconds, seconds);
+    worker.onmessage({ data: { result: { offset: 0, confident: true } } });
+    await pending;
+  }
 });

@@ -72,3 +72,18 @@ console.log(
   'Production Worker URL and compiled message handler passed; noisy AAC offset:',
   reply.result.offset,
 );
+
+const a = decode('public/demo/camera-a.mp4');
+const b = decode('public/demo/camera-b.mp4');
+for (const matchSeconds of [0, 1, 2, 3, 4, 5]) {
+  self.onmessage({ data: { a, b, rate: 16000, matchSeconds } });
+  assert.equal(reply?.error, undefined);
+  if (matchSeconds === 1) {
+    // This noisy opening has an ambiguous first second; do not confirm a wrong lag.
+    assert.equal(reply.result.confident, false);
+  } else {
+    assert.ok(Math.abs(reply.result.offset - 2.34) < 0.04);
+    assert.equal(reply.result.confident, true);
+  }
+}
+console.log('Compiled worker passed all six matching-duration options.');

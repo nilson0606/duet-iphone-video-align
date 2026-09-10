@@ -22,6 +22,29 @@ test('AAC encoded videos with independent noise align within one video frame', (
   assert.ok(r.confident, JSON.stringify(r));
   console.log('Measured noisy AAC alignment:', r);
 });
+test('noisy AAC opening remains aligned when the rest is unrelated', () => {
+  let seed = 123;
+  const changed = b.map((band) => {
+    const out = new Float32Array(50 * 120);
+    out.set(band.subarray(0, 250));
+    for (let i = 250; i < out.length; i++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      out[i] = (seed / 2147483648 - 1) * 4;
+    }
+    return out;
+  });
+  for (const [x, y, offset] of [
+    [a, changed, 2.34],
+    [changed, a, -2.34],
+  ]) {
+    const result = alignFeatures(x, y);
+    assert.ok(
+      Math.abs(result.offset - offset) < 1 / 30,
+      JSON.stringify(result),
+    );
+    assert.ok(result.confident, JSON.stringify(result));
+  }
+});
 test('reversing sources reverses the time offset', () => {
   const r = alignFeatures(b, a);
   assert.ok(Math.abs(r.offset + 2.34) < 1 / 30, JSON.stringify(r));

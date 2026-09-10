@@ -67,6 +67,7 @@ export default function Home() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [aligned, setAligned] = useState(false);
+  const [matchSeconds, setMatchSeconds] = useState(0);
   const [offset, setOffset] = useState(0);
   const [manual, setManual] = useState('0');
   const [alignment, setAlignment] = useState<{
@@ -330,7 +331,16 @@ export default function Home() {
     setPlayhead(time);
   }
   async function autoAlign() {
-    if (!clips[0] || !clips[1] || !start('比對兩段音訊…')) return;
+    if (
+      !clips[0] ||
+      !clips[1] ||
+      !start(
+        matchSeconds === 0
+          ? '尋找音訊對齊點…'
+          : `比對前段 ${matchSeconds} 秒音訊…`,
+      )
+    )
+      return;
     try {
       const result = await alignClips(
         clips[0],
@@ -340,6 +350,7 @@ export default function Home() {
           new Worker(new URL(analysisWorkerUrl, window.location.href), {
             type: 'module',
           }),
+        matchSeconds,
       );
       timeline(clips[0].duration, clips[1].duration, result.offset);
       setOffset(result.offset);
@@ -351,7 +362,7 @@ export default function Home() {
       setMessage(
         result.confident
           ? '已對齊。前端不同步的部分會裁掉，較短影片結束後顯示黑幕。'
-          : '聲音相似度不足，這是候選時間差。請微調、確認首幀後，按「套用時間差」。',
+          : '尚未找到明確 match。可更換比對秒數，再按「用音訊自動對齊」重試；也可手動調整時間差。',
       );
     } catch (e) {
       report(e);
@@ -711,6 +722,27 @@ export default function Home() {
               </div>
             ))}
           </div>
+          <label className="match-length">
+            前段音訊比對長度
+            <select
+              value={matchSeconds}
+              disabled={locked}
+              onChange={(e) => setMatchSeconds(Number(e.target.value))}
+              aria-describedby="match-length-hint"
+            >
+              {[0, 1, 2, 3, 4, 5].map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds === 0 ? '0 秒（找到對齊點即可）' : `${seconds} 秒`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="hint" id="match-length-hint">
+            {matchSeconds === 0
+              ? '預設寬鬆：找到明確音訊對齊點即成功，後段不需一致。'
+              : `只比對對齊起點後的前 ${matchSeconds} 秒，明確 match 即成功，後段不需一致。`}
+            結果不理想可換秒數重試；秒數越長，比對片段越長。
+          </p>
           <button
             className="primary"
             disabled={locked || !clips[0]?.mono || !clips[1]?.mono}

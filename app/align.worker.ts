@@ -1,9 +1,13 @@
 import { fingerprints, alignFeatures } from '../lib/alignment.mjs';
 self.onmessage = (event) => {
   try {
-    const { a, b, rate } = event.data;
+    const { a, b, rate, matchSeconds } = event.data;
     self.postMessage({
-      result: alignFeatures(fingerprints(a, rate), fingerprints(b, rate)),
+      result: alignFeatures(
+        fingerprints(a, rate),
+        fingerprints(b, rate),
+        matchSeconds,
+      ),
     });
   } catch (error) {
     self.postMessage({

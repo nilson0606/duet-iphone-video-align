@@ -1431,3 +1431,17 @@ button.video-box:not(:disabled):hover {
   background: var(--lime);
   color: #172217;
 }
+
+.match-length {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+.match-length select {
+  min-width: 80px;
+  min-height: 44px;
+}
