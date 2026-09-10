@@ -108,8 +108,8 @@ export default function Home() {
     context = useRef<AudioContext | null>(null);
   const mounted = useRef(true);
   const apiRef = useRef({ aligned: false, offset: 0, duration: 0, loaded: 0 });
-  const short = quality === '480' ? 480 : 720,
-    long = quality === '480' ? 854 : 1280;
+  const short = quality === '1080' ? 1080 : quality === '480' ? 480 : 720,
+    long = quality === '1080' ? 1920 : quality === '480' ? 854 : 1280;
   const dims =
     ratio === '9:16'
       ? [short, long]
@@ -1209,11 +1209,12 @@ export default function Home() {
                   clearResult();
                 }}
               >
+                <option value="1080">高畫質 1080p</option>
                 <option value="720">標準 720p</option>
                 <option value="480">省電 480p</option>
               </select>
             </label>
-            <span>融合較吃力時，可選 480p 降低輸出負擔。</span>
+            <span>1080p 檔案較大；融合較吃力時可改選 720p 或 480p。</span>
           </div>
           <div className="editor-foot">
             <span>

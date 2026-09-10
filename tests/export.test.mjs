@@ -165,11 +165,13 @@ function environment({
   };
   let recording = false,
     failedOnce = false;
+  const recorderOptions = [];
   class Recorder {
     static isTypeSupported() {
       return true;
     }
-    constructor() {
+    constructor(_stream, options) {
+      recorderOptions.push(options);
       this.state = 'inactive';
       this.mimeType = 'video/mp4';
     }
@@ -256,6 +258,7 @@ function environment({
     progress,
     draws,
     audioSource,
+    recorderOptions,
     gains,
     tracks: [audioTrack, videoTrack],
     restore() {
@@ -406,3 +409,23 @@ test('repeated exports reuse the player source without another file decode or at
     env.restore();
   }
 });
+
+for (const [width, height] of [
+  [1920, 1080],
+  [1080, 1920],
+  [1080, 1080],
+]) {
+  test(`1080p export uses a ${width}x${height} canvas and increased video bitrate`, async () => {
+    const env = environment();
+    try {
+      Object.assign(env.args, { width, height });
+      const blob = await renderMovie(env.args);
+      assert.equal(env.args.canvas.width, width);
+      assert.equal(env.args.canvas.height, height);
+      assert.equal(env.recorderOptions[0].videoBitsPerSecond, 8_000_000);
+      assert.ok(blob.size > 0);
+    } finally {
+      env.restore();
+    }
+  });
+}
