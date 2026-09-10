@@ -140,58 +140,6 @@ export function disposeClip(clip: Clip) {
   clip.video.remove();
   URL.revokeObjectURL(clip.url);
 }
-export function alignClips(
-  a: Clip,
-  b: Clip,
-  signal: AbortSignal,
-): Promise<{
-  offset: number;
-  score: number;
-  margin: number;
-  confident: boolean;
-}> {
-  return new Promise((resolve, reject) => {
-    if (!a.mono || !b.mono) {
-      reject(new Error('兩部影片都需要可辨識的聲音，或改用手動對齊。'));
-      return;
-    }
-    const worker = new Worker(
-      new URL('../app/align.worker.ts', import.meta.url),
-      { type: 'module' },
-    );
-    const timer = setTimeout(
-      () => finish(new Error('對齊逾時，請縮短影片或手動對齊。')),
-      60000,
-    );
-    const cancel = () => finish(new DOMException('已取消', 'AbortError'));
-    function finish(
-      error?: Error,
-      result?: {
-        offset: number;
-        score: number;
-        margin: number;
-        confident: boolean;
-      },
-    ) {
-      clearTimeout(timer);
-      worker.terminate();
-      signal.removeEventListener('abort', cancel);
-      if (error) reject(error);
-      else resolve(result!);
-    }
-    worker.onmessage = (e) =>
-      e.data.error
-        ? finish(new Error(e.data.error))
-        : finish(undefined, e.data.result);
-    worker.onerror = () =>
-      finish(new Error('音訊分析失敗，請重試或手動對齊。'));
-    signal.addEventListener('abort', cancel, { once: true });
-    if (signal.aborted) return cancel();
-    const ac = a.mono.slice(),
-      bc = b.mono.slice();
-    worker.postMessage({ a: ac, b: bc, rate: RATE }, [ac.buffer, bc.buffer]);
-  });
-}
 export function drawComposition(
   ctx: CanvasRenderingContext2D,
   clips: Clip[],

@@ -19,7 +19,6 @@ import {
   Volume2,
 } from 'lucide-react';
 import {
-  alignClips,
   disposeClip,
   loadClip,
   renderMovie,
@@ -29,6 +28,9 @@ import {
   type Box,
 } from '../lib/media';
 import { timeline, clamp } from '../lib/timeline.mjs';
+import { alignClips } from '../lib/align-clips';
+// oxlint-disable-next-line import/default -- Vite emits this worker URL as a virtual default export.
+import analysisWorkerUrl from './align.worker.ts?worker&url';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -288,7 +290,7 @@ export default function Home() {
       clearResult();
       preset('side', loaded);
       setMessage(
-        '已載入實際測試影片：B 晚開始 2.34 秒，且比 A 早結束，兩段都有獨立噪音。按下音訊對齊試試看。',
+        '已載入實際測試影片：B 從較後面的歌曲段落開始（差 2.34 秒），且比 A 早結束，兩段都有獨立噪音。按下音訊對齊試試看。',
       );
     } catch (e) {
       loaded.forEach(disposeClip);
@@ -319,6 +321,10 @@ export default function Home() {
         clips[0],
         clips[1],
         controller.current!.signal,
+        () =>
+          new Worker(new URL(analysisWorkerUrl, window.location.href), {
+            type: 'module',
+          }),
       );
       timeline(clips[0].duration, clips[1].duration, result.offset);
       setOffset(result.offset);
@@ -617,9 +623,11 @@ export default function Home() {
                 <SlidersHorizontal size={15} />
                 手動調整時間差
               </summary>
-              <p className="hint">正數表示 B 較晚開始；負數表示 A 較晚開始。</p>
+              <p className="hint">
+                正數裁 A 開頭，負數裁 B 開頭。比對歌曲段落，與實際拍攝時間無關。
+              </p>
               <div className="manual-input">
-                <label htmlFor="offset">B 晚開始（秒）</label>
+                <label htmlFor="offset">音樂時間差（秒）</label>
                 <input
                   id="offset"
                   type="number"

@@ -11,7 +11,7 @@
 
 ## 時間軸定義
 
-offset > 0 表示 B 在真實世界較晚開始拍攝，裁掉 A 開頭 offset 秒；offset < 0 則裁 B。**保留前端對齊後最長的尾段；較短影片播放結束後，其矩形區域持續畫成不透明黑色**，即使它在另一部影片上層也不透出下層。輸出聲音僅用使用者選擇的音軌，該音軌先結束時，其後靜音。
+offset > 0 表示 A 的歌曲段落需前進 offset 秒才能與 B 對應，裁掉 A 開頭 offset 秒；offset < 0 則裁 B。這是音樂位置的差值，不是實際拍攝時間差；影片可以在不同時間、不同場景拍攝。**保留前端對齊後最長的尾段；較短影片播放結束後，其矩形區域持續畫成不透明黑色**，即使它在另一部影片上層也不透出下層。輸出聲音僅用使用者選擇的音軌，該音軌先結束時，其後靜音。
 
 ## 範圍與限制
 
@@ -49,3 +49,7 @@ npm run build
 - https://developer.mozilla.org/en-US/docs/Web/API/Navigator/share
 
 本次編輯器範圍（app、lib、tests、scripts）的 oxlint 與 TypeScript 檢查通過。完整 `npm run lint` 尚有產生器預載、未使用的 components/ui 與 hooks 的既有規則錯誤；保留原始範例檔案，未停用其檢查規則。
+
+## 音訊分析修正
+
+正式版 Worker URL 改為由瀏覽器網址解析，避免伺服器編譯把 import.meta.url 固定為 file:///ROOT 路徑。六頻帶特徵加上對稱 100 ms 平滑以抑制不同錄音環境的快速噪音變化；信心門檻維持不變。新增 Worker 生命週期測試，以及 npm run test:build 驗證正式輸出路徑和編譯後分析程式。使用者實拍影片僅在本機驗證，不納入 repo 或網站。
