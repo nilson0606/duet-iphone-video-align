@@ -714,13 +714,13 @@ export default function Home() {
                     checked={matchSeconds === seconds}
                     onChange={() => setMatchSeconds(seconds)}
                   />
-                  <span>{seconds} 秒</span>
+                  <span>{seconds === 0 ? '自動' : `${seconds} 秒`}</span>
                 </label>
               ))}
             </div>
             <p className="hint" id="match-length-hint">
               {matchSeconds === 0
-                ? '全段音樂找時間差，0 秒自動選擇明確片段確認。'
+                ? '全段音樂找時間差，自動選擇明確片段確認。'
                 : `全段音樂找時間差，再用 ${matchSeconds} 秒片段確認。`}
               局部拍手、說話或尾段不同，不會直接否決。結果不理想可換秒數重試。
             </p>
