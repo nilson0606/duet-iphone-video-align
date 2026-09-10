@@ -123,3 +123,11 @@ npm run build
 對齊後，在畫布下方按「新增文字」。最多八個文字圖層，每段最多 80 字，可換行、改顏色、拖曳移動與拉右下角等比例縮放，也可用大小滑桿調整。文字固定疊在兩部影片上方並顯示整段，刪除或修改會清除舊輸出，需重新融合。預覽與輸出共用 Canvas 字體、換行與座標計算，文字大小依畫布短邊比例保存，切換 480p／720p／1080p 維持構圖比例。錄製開始前只產生一次透明文字圖層，逐幀複用；不加入持續音畫同步校正。尚未進行 iPhone 觸控實測。
 
 文字項目旁直接提供「刪除」，不必先選取；刪除目前文字後選取剩餘第一項。文字顏色提供白、黑、紅、黃、綠、藍、紫、粉紅常用色，並保留自訂色彩選擇器。顏色即時反映於預覽，使用同一文字繪製流程融合到影片；刪除或改色會清除過期成品，需重新融合。
+
+## GitHub Pages
+
+`npm run build:pages` 使用獨立 Vite 設定建置同一個編輯器，靜態成品位於 `dist-pages/`；既有 `npm run build` 仍建置 Sites 版本。部署在儲存庫子路徑時，先設定 `PAGES_BASE_PATH=/duet-iphone-video-align/`。音訊 Worklet、測試影片、圖示與背景 Worker 均會使用該路徑。
+
+GitHub 儲存庫使用 `.github/workflows/pages.yml`，在 `main` 推送後自動建置與發布。Settings → Pages 的 Source 使用 GitHub Actions，實際路徑由 configure-pages 回傳，自訂網域或帳號根站亦使用相同流程。影片仍在裝置本機處理。還原 ZIP 和本機交接文件不納入此次 GitHub 推送。
+
+驗證：`node scripts/verify-worker-build.mjs --pages`（需要 FFmpeg）會實際執行編譯後的對齊／MOV 解碼 Worker，涵蓋解碼失敗回退；`npm test` 執行共用邏輯測試。

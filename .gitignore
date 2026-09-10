@@ -39,3 +39,8 @@ next-env.d.ts
 
 *.tsbuildinfo
 /.tmp/
+
+# GitHub Pages build and local backups
+/dist-pages/
+/restore-points/
+/.sites-runtime/

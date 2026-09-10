@@ -36,6 +36,7 @@ import {
 import { timeline, clamp } from '../lib/timeline.mjs';
 import { alignClips } from '../lib/align-clips';
 import { captureClipAudio } from '../lib/capture-audio';
+import { publicAsset } from '../lib/public-asset';
 // oxlint-disable-next-line import/default -- Vite emits this worker URL as a virtual default export.
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
@@ -285,7 +286,9 @@ export default function Home() {
     const loaded: Clip[] = [];
     try {
       for (const name of names) {
-        const response = await fetch(`/demo/camera-${name.toLowerCase()}.mp4`);
+        const response = await fetch(
+          publicAsset(`demo/camera-${name.toLowerCase()}.mp4`),
+        );
         if (!response.ok) throw new Error('測試影片載入失敗，請稍後重試。');
         loaded.push(
           await loadClip(

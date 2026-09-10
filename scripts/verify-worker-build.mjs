@@ -3,9 +3,15 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
-const publicRoot = 'dist/client';
-const chunks = 'dist/client/_next/static/chunks';
-const pages = fs.readdirSync(chunks).filter((f) => /^page-.*\.js$/.test(f));
+const isPages = process.argv.includes('--pages');
+const args = process.argv.slice(2).filter((arg) => arg !== '--pages');
+const publicRoot = isPages ? 'dist-pages' : 'dist/client';
+const chunks = isPages
+  ? 'dist-pages/assets'
+  : 'dist/client/_next/static/chunks';
+const pages = fs
+  .readdirSync(chunks)
+  .filter((f) => (isPages ? /^index-.*\.js$/ : /^page-.*\.js$/).test(f));
 assert.ok(pages.length, 'Build first');
 const source = pages
   .map((f) => fs.readFileSync(path.join(chunks, f), 'utf8'))
@@ -18,7 +24,11 @@ assert.ok(
   !/new Worker\(new URL\([^)]*file:/.test(source),
   'Worker must not use the server file: URL',
 );
-const matches = source.match(/\/_next\/static\/align\.worker-[\w-]+\.js/g);
+const matches = source.match(
+  isPages
+    ? /\/assets\/align\.worker-[\w-]+\.js/g
+    : /\/_next\/static\/align\.worker-[\w-]+\.js/g,
+);
 assert.ok(
   matches?.length,
   'Worker URL must be emitted into the browser bundle',
@@ -58,15 +68,13 @@ vm.runInNewContext(compiled, { self }, { timeout: 5000 });
 assert.equal(typeof self.onmessage, 'function');
 self.onmessage({
   data: {
-    a: decode(process.argv[2] ?? 'public/demo/camera-a.mp4'),
-    b: decode(process.argv[3] ?? 'public/demo/camera-b.mp4'),
+    a: decode(args[0] ?? 'public/demo/camera-a.mp4'),
+    b: decode(args[1] ?? 'public/demo/camera-b.mp4'),
     rate: 16000,
   },
 });
 assert.equal(reply?.error, undefined);
-assert.ok(
-  Math.abs(reply.result.offset - Number(process.argv[4] ?? 2.34)) < 0.04,
-);
+assert.ok(Math.abs(reply.result.offset - Number(args[2] ?? 2.34)) < 0.04);
 assert.equal(reply.result.confident, true);
 console.log(
   'Production Worker URL and compiled message handler passed; noisy AAC offset:',
@@ -97,7 +105,7 @@ vm.runInNewContext(captureProcessor, {
 assert.equal(registered.name, 'duet-audio-capture');
 assert.equal(typeof registered.ctor, 'function');
 assert.ok(
-  source.includes('/audio-capture.worklet.js'),
+  source.includes('audio-capture.worklet.js'),
   'The player capture module must be reachable from the client',
 );
 assert.ok(
@@ -122,7 +130,9 @@ console.log('Compiled worker ignores the false 60 ms startup-silence match.');
 
 // Exercise the shipped decoder bundle with a real PCM MOV and with unsupported AAC.
 const fastMatches = source.match(
-  /\/_next\/static\/decode-audio\.worker-[\w-]+\.js/g,
+  isPages
+    ? /\/assets\/decode-audio\.worker-[\w-]+\.js/g
+    : /\/_next\/static\/decode-audio\.worker-[\w-]+\.js/g,
 );
 assert.ok(fastMatches?.length, 'Fast audio worker URL must reach the browser');
 const fastSource = fs.readFileSync(

@@ -1,3 +1,4 @@
+import { publicAsset } from './public-asset.ts';
 import { addSamples } from './audio-samples.ts';
 export { addSamples } from './audio-samples.ts';
 import { tryFastAudio } from './fast-audio.ts';
@@ -9,7 +10,9 @@ const modules = new WeakMap<AudioContext, Promise<void>>();
 function loadProcessor(context: AudioContext) {
   let pending = modules.get(context);
   if (!pending) {
-    pending = context.audioWorklet.addModule('/audio-capture.worklet.js');
+    pending = context.audioWorklet.addModule(
+      publicAsset('audio-capture.worklet.js'),
+    );
     modules.set(context, pending);
     void pending.catch(() => modules.delete(context));
   }
