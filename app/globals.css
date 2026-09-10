@@ -1187,3 +1187,85 @@ button.video-box:not(:disabled):hover {
   color: #dcebd0;
   font-size: 13px;
 }
+.video-box {
+  --handle-color: var(--lime);
+}
+.video-box.blue {
+  --handle-color: var(--blue);
+}
+.edge-handle {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.edge-handle:before {
+  content: '';
+  position: absolute;
+  border-radius: 4px;
+  background: var(--handle-color);
+  box-shadow:
+    0 0 0 1px #122010,
+    0 1px 5px #0008;
+}
+.edge-left,
+.edge-right {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 44px;
+  cursor: ew-resize;
+}
+.edge-left {
+  left: 0;
+}
+.edge-right {
+  right: 0;
+}
+.edge-left:before,
+.edge-right:before {
+  top: 10px;
+  width: 5px;
+  height: 24px;
+}
+.edge-left:before {
+  left: 0;
+}
+.edge-right:before {
+  right: 0;
+}
+.edge-top,
+.edge-bottom {
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 32px;
+  cursor: ns-resize;
+}
+.edge-top {
+  top: 0;
+}
+.edge-bottom {
+  bottom: 0;
+}
+.edge-top:before,
+.edge-bottom:before {
+  left: 10px;
+  width: 24px;
+  height: 5px;
+}
+.edge-top:before {
+  top: 0;
+}
+.edge-bottom:before {
+  bottom: 0;
+}
+.video-box .resize-handle {
+  z-index: 3;
+}
+.resize-help {
+  padding: 0 0 12px;
+  margin: 0;
+}

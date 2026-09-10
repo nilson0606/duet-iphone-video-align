@@ -391,7 +391,11 @@ export default function Home() {
     setBoxes((old) => old.map((b, i) => (i === selected ? next : b)));
     clearResult();
   }
-  function pointerDown(e: React.PointerEvent, index: number, resize = false) {
+  function pointerDown(
+    e: React.PointerEvent,
+    index: number,
+    mode: 'move' | 'corner' | 'left' | 'right' | 'top' | 'bottom' = 'move',
+  ) {
     if (!aligned || busy || seeking) return;
     e.preventDefault();
     e.stopPropagation();
@@ -405,7 +409,33 @@ export default function Home() {
     clearResult();
     const move = (ev: PointerEvent) => {
       let next: Box;
-      if (resize) {
+      const dx = (ev.clientX - startX) / bounds.width;
+      const dy = (ev.clientY - startY) / bounds.height;
+      if (mode === 'left' || mode === 'right') {
+        // Edge handles only alter this axis, even when corner aspect lock is on.
+        const width = clamp(
+          original.width + (mode === 'left' ? -dx : dx),
+          0.05,
+          2,
+        );
+        next = {
+          ...original,
+          width,
+          x: mode === 'left' ? original.x + original.width - width : original.x,
+        };
+      } else if (mode === 'top' || mode === 'bottom') {
+        const height = clamp(
+          original.height + (mode === 'top' ? -dy : dy),
+          0.05,
+          2,
+        );
+        next = {
+          ...original,
+          height,
+          y:
+            mode === 'top' ? original.y + original.height - height : original.y,
+        };
+      } else if (mode === 'corner') {
         const width = clamp(
           original.width + (ev.clientX - startX) / bounds.width,
           0.1,
@@ -791,13 +821,30 @@ export default function Home() {
                       </span>
                       {black && <span className="black-label">已結束</span>}
                       {selected === i && (
-                        <span
-                          className="resize-handle"
-                          aria-hidden="true"
-                          onPointerDown={(e) => pointerDown(e, i, true)}
-                        >
-                          <Grip size={13} />
-                        </span>
+                        <>
+                          {(['left', 'right', 'top', 'bottom'] as const).map(
+                            (edge) => (
+                              <span
+                                key={edge}
+                                className={'edge-handle edge-' + edge}
+                                aria-hidden="true"
+                                title={
+                                  edge === 'left' || edge === 'right'
+                                    ? '獨立調整寬度'
+                                    : '獨立調整高度'
+                                }
+                                onPointerDown={(e) => pointerDown(e, i, edge)}
+                              />
+                            ),
+                          )}
+                          <span
+                            className="resize-handle"
+                            aria-hidden="true"
+                            onPointerDown={(e) => pointerDown(e, i, 'corner')}
+                          >
+                            <Grip size={13} />
+                          </span>
+                        </>
                       )}
                     </button>
                   );
@@ -813,7 +860,7 @@ export default function Home() {
           </div>
           <div className="stage-hint">
             <Move size={16} />
-            拖曳移動・拉動右下角縮放・超出畫布會裁切
+            拖曳畫面移動・拉動邊緣調整寬高・右下角縮放
           </div>
           {aligned && plan && (
             <div className="composition-controls">
@@ -880,6 +927,9 @@ export default function Home() {
                   移到最上層
                 </button>
               </div>
+              <p className="hint resize-help">
+                左右把手只改寬度，上下把手只改高度；右下角依「鎖定比例」縮放。超出畫布的部分會裁切。
+              </p>
               <div className="geometry">
                 <div className="geometry-head">
                   <span>影片 {names[selected]} 的位置與尺寸</span>
