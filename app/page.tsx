@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CropEditor } from './crop-editor';
+import { AudioAudition } from './audio-audition';
 import { FULL_CROP, cropImageStyle, type Crop } from '../lib/crop';
 import { renderMovie, type ExportPhase } from '../lib/render-movie';
 import {
@@ -842,6 +843,15 @@ export default function Home() {
                 套用時間差
               </button>
             </details>
+          )}
+          {clips.some(Boolean) && (
+            <AudioAudition
+              key={clips.map((clip) => clip?.url ?? '').join('|')}
+              sources={clips.map((clip) =>
+                clip ? { url: clip.url, duration: clip.duration } : null,
+              )}
+              disabled={!!busy}
+            />
           )}
         </aside>
         <section className="editor">
