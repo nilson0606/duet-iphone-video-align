@@ -264,7 +264,7 @@ export default function Home() {
       setPlayhead(0);
       clearResult();
       preset('side', next);
-      if (clip.audioError) setMessage(clip.audioError);
+      if (clip.audioError) setError(clip.audioError);
     } catch (e) {
       report(e);
     } finally {
@@ -301,6 +301,10 @@ export default function Home() {
       setPlayhead(0);
       clearResult();
       preset('side', loaded);
+      const audioErrors = loaded.flatMap((clip, i) =>
+        clip.audioError ? [`影片 ${names[i]}：${clip.audioError}`] : [],
+      );
+      if (audioErrors.length) setError(audioErrors.join(' '));
       setMessage(
         '已載入實際測試影片：B 從較後面的歌曲段落開始（差 2.34 秒），且比 A 早結束，兩段都有獨立噪音。按下音訊對齊試試看。',
       );
@@ -672,6 +676,33 @@ export default function Home() {
           <h2>
             來源影片<span>01 / SOURCE</span>
           </h2>
+          <fieldset
+            className="match-options"
+            disabled={locked}
+            aria-describedby="match-length-hint"
+          >
+            <legend>前段音訊比對長度</legend>
+            <div className="match-options-row">
+              {[0, 1, 2, 3, 4, 5].map((seconds) => (
+                <label key={seconds}>
+                  <input
+                    type="radio"
+                    name="match-seconds"
+                    value={seconds}
+                    checked={matchSeconds === seconds}
+                    onChange={() => setMatchSeconds(seconds)}
+                  />
+                  <span>{seconds} 秒</span>
+                </label>
+              ))}
+            </div>
+            <p className="hint" id="match-length-hint">
+              {matchSeconds === 0
+                ? '預設 0 秒：找到明確對齊點即成功，後段不需一致。'
+                : `只比對對齊起點後的前 ${matchSeconds} 秒，後段不需一致。`}
+              不 match 或結果不理想，可換秒數再按「用音訊自動對齊」。
+            </p>
+          </fieldset>
           <div className="sources">
             {clips.map((clip, i) => (
               <div key={i} className="source-item">
@@ -722,27 +753,6 @@ export default function Home() {
               </div>
             ))}
           </div>
-          <label className="match-length">
-            前段音訊比對長度
-            <select
-              value={matchSeconds}
-              disabled={locked}
-              onChange={(e) => setMatchSeconds(Number(e.target.value))}
-              aria-describedby="match-length-hint"
-            >
-              {[0, 1, 2, 3, 4, 5].map((seconds) => (
-                <option key={seconds} value={seconds}>
-                  {seconds === 0 ? '0 秒（找到對齊點即可）' : `${seconds} 秒`}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="hint" id="match-length-hint">
-            {matchSeconds === 0
-              ? '預設寬鬆：找到明確音訊對齊點即成功，後段不需一致。'
-              : `只比對對齊起點後的前 ${matchSeconds} 秒，明確 match 即成功，後段不需一致。`}
-            結果不理想可換秒數重試；秒數越長，比對片段越長。
-          </p>
           <button
             className="primary"
             disabled={locked || !clips[0]?.mono || !clips[1]?.mono}

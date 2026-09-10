@@ -1,4 +1,5 @@
 import type { Crop } from './crop.ts';
+import { decodeMono } from './decode-mono.ts';
 import { isClipActive } from './timeline.mjs';
 export type Clip = {
   crop?: Crop;
@@ -101,30 +102,20 @@ export async function loadClip(file: File): Promise<Clip> {
     const thumbnail = snapshot(video);
     let mono: Float32Array | null = null;
     let audioError: string | undefined;
-    // Downsample after decode; only small mono fingerprints remain in memory.
-    const context = new AudioContext({ sampleRate: RATE });
     try {
-      const decoded = await context.decodeAudioData(await file.arrayBuffer());
-      const offline = new OfflineAudioContext(
-        1,
-        Math.ceil(decoded.duration * RATE),
-        RATE,
-      );
-      const source = offline.createBufferSource();
-      source.buffer = decoded;
-      source.connect(offline.destination);
-      source.start();
-      mono = (await offline.startRendering()).getChannelData(0).slice();
+      mono = await decodeMono(file, RATE);
       let sum = 0;
       for (let i = 0; i < mono.length; i++) sum += mono[i] * mono[i];
       if (sum / mono.length < 1e-10) {
         mono = null;
         audioError = '沒有可辨識的聲音，請使用手動對齊。';
       }
-    } catch {
-      audioError = '無法解碼音訊，可手動設定時間差。';
-    } finally {
-      await context.close();
+    } catch (error) {
+      mono = null;
+      audioError =
+        error instanceof Error
+          ? error.message
+          : '音訊讀取失敗，可手動設定時間差。';
     }
     const peaks = Array.from({ length: 64 }, (_, i) => {
       if (!mono) return 0;
