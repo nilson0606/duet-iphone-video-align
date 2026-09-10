@@ -1060,6 +1060,7 @@ export default function Home() {
                 }
                 aspect={clips[selected]!.width / clips[selected]!.height}
                 crop={clips[selected]!.crop ?? FULL_CROP}
+                hasApplied={clips[selected]!.crop !== undefined}
                 disabled={locked}
                 onApply={applyCrop}
               />

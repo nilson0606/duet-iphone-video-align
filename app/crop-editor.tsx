@@ -7,6 +7,7 @@ export function CropEditor({
   aspect,
   name,
   crop,
+  hasApplied,
   disabled,
   onApply,
 }: {
@@ -14,6 +15,7 @@ export function CropEditor({
   aspect: number;
   name: string;
   crop: Crop;
+  hasApplied: boolean;
   disabled: boolean;
   onApply: (crop: Crop) => void;
 }) {
@@ -97,7 +99,7 @@ export function CropEditor({
             setOpen(!open);
           }}
         >
-          {open ? '收起裁切' : '重新裁切'}
+          {open ? '收起裁切' : hasApplied ? '重新裁切' : '裁切'}
         </button>
       </div>
       <div id={panelId} hidden={!open}>
