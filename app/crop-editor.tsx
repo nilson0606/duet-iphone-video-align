@@ -84,12 +84,12 @@ export function CropEditor({
     <details className="crop-editor">
       <summary>裁切影片 {name} 的畫面</summary>
       <p className="hint">
-        拖動框線裁切，拖動框內移動範圍。套用後，再到上方調整大小與位置。
+        以對齊後第一幀選取範圍，裁切會套用到整段影片。拖動框線裁切，框內可移動；套用後再調整大小與位置。
       </p>
       <div ref={frame} className="crop-source" style={{ aspectRatio: aspect }}>
         <img
           src={thumbnail}
-          alt={`影片 ${name} 裁切前的完整畫面`}
+          alt={`影片 ${name} 對齊後第一幀的完整畫面`}
           draggable={false}
         />
         <button

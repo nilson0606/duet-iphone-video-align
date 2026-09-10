@@ -10,6 +10,7 @@ export type Clip = {
   width: number;
   height: number;
   thumbnail: string;
+  alignedThumbnail?: string;
   peaks: number[];
   audioError?: string;
 };

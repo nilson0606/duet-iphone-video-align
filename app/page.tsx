@@ -320,7 +320,11 @@ export default function Home() {
         return snapshot(c!.video);
       }),
     );
-    const next = items.map((c, i) => ({ ...c!, thumbnail: thumbs[i] }));
+    const next = items.map((c, i) => ({
+      ...c!,
+      thumbnail: thumbs[i],
+      alignedThumbnail: time === 0 ? thumbs[i] : c!.alignedThumbnail,
+    }));
     clipRef.current = next;
     setClips(next);
     setPlayhead(time);
@@ -961,7 +965,10 @@ export default function Home() {
                   clips[selected]!.url + JSON.stringify(clips[selected]!.crop)
                 }
                 name={names[selected]}
-                thumbnail={clips[selected]!.thumbnail}
+                thumbnail={
+                  clips[selected]!.alignedThumbnail ??
+                  clips[selected]!.thumbnail
+                }
                 aspect={clips[selected]!.width / clips[selected]!.height}
                 crop={clips[selected]!.crop ?? FULL_CROP}
                 disabled={locked}
