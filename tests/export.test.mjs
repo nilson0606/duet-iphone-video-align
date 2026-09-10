@@ -87,7 +87,11 @@ function environment({
     }
     play() {
       this.playCalls++;
-      assert.equal(this.muted, true, 'Both source videos must stay muted');
+      assert.equal(
+        this.muted,
+        this.index !== args.audio,
+        'Only the chosen audio player is unmuted',
+      );
       this.paused = false;
       return playPending ? new Promise(() => {}) : Promise.resolve();
     }
@@ -104,24 +108,28 @@ function environment({
   });
   const audioTrack = track(),
     videoTrack = track();
-  const audioSource = {
-    starts: [],
-    stopped: false,
-    buffer: null,
-    connect() {},
-    disconnect() {},
-    start(...args) {
-      this.starts.push(args);
-    },
-    stop() {
-      this.stopped = true;
-    },
-  };
+  const audioSource = { video: null, connect() {}, disconnect() {} };
+  const gains = [];
+  let sourceCalls = 0;
   const context = {
     currentTime: 0,
     resume: () => Promise.resolve(),
-    decodeAudioData: () => Promise.resolve({ duration: clockDuration }),
-    createBufferSource: () => audioSource,
+    decodeAudioData: () => {
+      throw new Error('Whole-file audio decoding must never run');
+    },
+    createMediaElementSource(video) {
+      sourceCalls++;
+      if (sourceCalls > 1)
+        throw new Error('Media element cannot be attached twice');
+      audioSource.video = video;
+      return audioSource;
+    },
+    destination: {},
+    createGain() {
+      const gain = { gain: { value: 1 }, connect() {}, disconnect() {} };
+      gains.push(gain);
+      return gain;
+    },
     createMediaStreamDestination: () => ({
       stream: {
         getAudioTracks: () => [audioTrack],
@@ -248,6 +256,7 @@ function environment({
     progress,
     draws,
     audioSource,
+    gains,
     tracks: [audioTrack, videoTrack],
     restore() {
       for (const k of keys) {
@@ -282,7 +291,11 @@ test('fusion never seeks or changes speed after the initial trim, even with play
     for (const video of env.videos) {
       assert.deepEqual(video.seeks, []);
       assert.ok(video.rateAssignments.every((rate) => rate === 1));
-      assert.equal(video.playCalls, 2, 'Only startup priming and the final play');
+      assert.equal(
+        video.playCalls,
+        2,
+        'Only startup priming and the final play',
+      );
     }
     assert.equal(env.progress.at(-1), 1);
   } finally {
@@ -297,8 +310,13 @@ test('trim offsets are applied before recording and to the chosen audio', async 
     await renderMovie(env.args);
     assert.deepEqual(env.videos[1].seeks, [1]);
     assert.deepEqual(env.videos[0].seeks, []);
-    assert.equal(env.audioSource.starts[0][1], 1);
-    assert.equal(env.audioSource.starts[0][2], 3);
+    assert.equal(env.audioSource.video, env.videos[1]);
+    assert.equal(env.gains[0].gain.value, 0, 'Speaker monitor stays silent');
+    assert.equal(
+      env.gains[1].gain.value,
+      0,
+      'Recording gate is closed on completion',
+    );
     assert.ok(
       env.draws.some((d) => d[0] === 'black' && d[1] === 427),
       'Ended shorter clip becomes black',
@@ -314,8 +332,10 @@ test('large source offsets are cropped before playback', async () => {
     await renderMovie(env.args);
     assert.deepEqual(env.videos[0].seeks, [4]);
     assert.deepEqual(env.videos[1].seeks, []);
-    assert.ok(env.videos.every((v) => v.rateAssignments.every((rate) => rate === 1)));
-    assert.equal(env.audioSource.starts[0][1], 4);
+    assert.ok(
+      env.videos.every((v) => v.rateAssignments.every((rate) => rate === 1)),
+    );
+    assert.equal(env.audioSource.video, env.videos[0]);
   } finally {
     env.restore();
   }
@@ -370,6 +390,18 @@ test('jittery playback does not trigger repeated decoder seeks during fusion', a
     await renderMovie(env.args);
     assert.equal(env.videos[1].seeks.length, 0);
     assert.equal(env.progress.at(-1), 1);
+  } finally {
+    env.restore();
+  }
+});
+
+test('repeated exports reuse the player source without another file decode or attachment', async () => {
+  const env = environment();
+  try {
+    await renderMovie(env.args);
+    await renderMovie(env.args);
+    assert.equal(env.progress.at(-1), 1);
+    assert.ok(env.videos.every((v) => v.paused && v.muted));
   } finally {
     env.restore();
   }

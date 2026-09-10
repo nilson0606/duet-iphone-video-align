@@ -1,5 +1,5 @@
 import type { Crop } from './crop.ts';
-import { decodeMono } from './decode-mono.ts';
+import { releasePlayerAudio } from './player-audio.ts';
 import { isClipActive } from './timeline.mjs';
 export type Clip = {
   crop?: Crop;
@@ -100,42 +100,18 @@ export async function loadClip(file: File): Promise<Clip> {
       throw new Error('手機版支援每部 3 秒至 3 分鐘的影片。');
     if (!video.videoWidth) throw new Error('檔案沒有可讀取的影像。');
     const thumbnail = snapshot(video);
-    let mono: Float32Array | null = null;
-    let audioError: string | undefined;
-    try {
-      mono = await decodeMono(file, RATE);
-      let sum = 0;
-      for (let i = 0; i < mono.length; i++) sum += mono[i] * mono[i];
-      if (sum / mono.length < 1e-10) {
-        mono = null;
-        audioError = '沒有可辨識的聲音，請使用手動對齊。';
-      }
-    } catch (error) {
-      mono = null;
-      audioError =
-        error instanceof Error
-          ? error.message
-          : '音訊讀取失敗，可手動設定時間差。';
-    }
-    const peaks = Array.from({ length: 64 }, (_, i) => {
-      if (!mono) return 0;
-      let p = 0;
-      const start = Math.floor((i * mono.length) / 64),
-        end = Math.floor(((i + 1) * mono.length) / 64);
-      for (let j = start; j < end; j += 16) p = Math.max(p, Math.abs(mono[j]));
-      return p;
-    });
+    // Import through the same native video path used by nivitrack iPhone.
+    // Sound is captured on the explicit Align gesture, never decoded as a file.
     return {
       file,
       url,
       video,
-      mono,
+      mono: null,
       duration: video.duration,
       width: video.videoWidth,
       height: video.videoHeight,
       thumbnail,
-      peaks,
-      audioError,
+      peaks: [],
     };
   } catch (error) {
     video.remove();
@@ -146,6 +122,7 @@ export async function loadClip(file: File): Promise<Clip> {
   }
 }
 export function disposeClip(clip: Clip) {
+  releasePlayerAudio(clip.video);
   clip.video.pause();
   clip.video.removeAttribute('src');
   clip.video.load();

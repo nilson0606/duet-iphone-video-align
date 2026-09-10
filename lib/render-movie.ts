@@ -1,4 +1,5 @@
 import { timeline } from './timeline.mjs';
+import { playerAudio } from './player-audio.ts';
 import {
   drawComposition,
   seek,
@@ -62,7 +63,8 @@ export async function renderMovie(args: {
   let stream: MediaStream | undefined,
     destination: MediaStreamAudioDestinationNode | undefined;
   let recorder: MediaRecorder | undefined,
-    source: AudioBufferSourceNode | undefined;
+    source: MediaElementAudioSourceNode | undefined;
+  let audioGate: GainNode | undefined;
   let wake: WakeLockSentinel | undefined,
     stopping = false;
   try {
@@ -77,11 +79,18 @@ export async function renderMovie(args: {
     const ctx = canvas.getContext('2d', { alpha: false })!;
     if (!ctx || !canvas.captureStream)
       throw new Error('此瀏覽器無法錄製合成畫面。（E03）');
-    // Keep both decoders muted and visible. Safari can interrupt competing
-    // unmuted media elements. The selected audio is rendered separately below.
+    // The selected player's audio feeds the recorder, like nivitrack iPhone.
+    // The monitor is silent; the other video stays muted.
+    source = playerAudio(context, clips[audio].video);
+    audioGate = context.createGain();
+    audioGate.gain.value = 0;
+    destination = context.createMediaStreamDestination();
+    source.connect(audioGate);
+    audioGate.connect(destination);
     const resumed = context.resume();
-    const primed = clips.map((c) => {
-      c.video.muted = true;
+    const primed = clips.map((c, i) => {
+      c.video.muted = i !== audio;
+      c.video.volume = 1;
       c.video.playsInline = true;
       c.video.playbackRate = 1;
       sourceHost.appendChild(c.video);
@@ -93,17 +102,6 @@ export async function renderMovie(args: {
       '影片尚未開始播放。請在 Safari 開啟同一網址後重試。（E04）',
     );
     clips.forEach((c) => c.video.pause());
-    onStage('preparing', '正在準備選定的音軌…');
-    const audioBytes = await run(
-      clips[audio].file.arrayBuffer(),
-      20000,
-      '讀取音軌逾時，請重新選擇影片。（E05）',
-    );
-    const buffer = await run(
-      context.decodeAudioData(audioBytes),
-      30000,
-      '音軌解碼逾時，請嘗試較短的影片。（E06）',
-    );
     onStage('preparing', '正在定位兩部影片的同步起點…');
     await run(
       Promise.all(
@@ -122,10 +120,6 @@ export async function renderMovie(args: {
         else wake = lock;
       })
       .catch(() => {});
-    destination = context.createMediaStreamDestination();
-    source = context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(destination);
     stream = canvas.captureStream(30);
     destination.stream
       .getAudioTracks()
@@ -161,14 +155,11 @@ export async function renderMovie(args: {
     // The audio clock controls duration and black tails, never decoder seeking.
     const startClock = context.currentTime;
     recorder.start(1000);
-    const audioStart = plan.starts[audio];
-    if (audioStart < buffer.duration)
-      source.start(
-        startClock,
-        audioStart,
-        Math.min(buffer.duration - audioStart, plan.remaining[audio]),
-      );
-    onStage('recording', '已跳過未對齊的開頭，正在以原速融合；請保持畫面開啟。');
+    audioGate.gain.value = 1;
+    onStage(
+      'recording',
+      '已跳過未對齊的開頭，正在以原速融合；請保持畫面開啟。',
+    );
     await new Promise<void>((resolve, reject) => {
       let raf = 0,
         settled = false,
@@ -200,6 +191,7 @@ export async function renderMovie(args: {
           resolve();
           return;
         }
+        if (elapsed >= plan.remaining[audio]) audioGate!.gain.value = 0;
         for (let i = 0; i < clips.length; i++) {
           const video = clips[i].video;
           if (elapsed >= plan.remaining[i] && !video.paused) video.pause();
@@ -252,12 +244,11 @@ export async function renderMovie(args: {
     } catch {
       /* Best-effort cleanup. */
     }
-    try {
-      source?.stop();
-    } catch {
-      /* Source may not have started. */
+    if (audioGate) {
+      audioGate.gain.value = 0;
+      source?.disconnect(audioGate);
+      audioGate.disconnect();
     }
-    source?.disconnect();
     destination?.disconnect();
     stream?.getTracks().forEach((t) => t.stop());
     destination?.stream.getTracks().forEach((t) => t.stop());

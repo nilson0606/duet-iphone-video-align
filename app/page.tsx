@@ -32,6 +32,7 @@ import {
 } from '../lib/media';
 import { timeline, clamp } from '../lib/timeline.mjs';
 import { alignClips } from '../lib/align-clips';
+import { captureClipAudio } from '../lib/capture-audio';
 // oxlint-disable-next-line import/default -- Vite emits this worker URL as a virtual default export.
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 const names = ['A', 'B'];
@@ -90,6 +91,7 @@ export default function Home() {
   const exportDialog = useRef<HTMLDialogElement>(null);
   const exportCanvas = useRef<HTMLCanvasElement>(null);
   const sourceHost = useRef<HTMLDivElement>(null);
+  const analysisHost = useRef<HTMLDivElement>(null);
   const [result, setResult] = useState<{
     url: string;
     blob: Blob;
@@ -346,6 +348,22 @@ export default function Home() {
     )
       return;
     try {
+      context.current ??= new AudioContext();
+      await captureClipAudio(
+        clips as Clip[],
+        context.current,
+        controller.current!.signal,
+        (index, progress) =>
+          setBusy(
+            `讀取影片 ${names[index]} 聲音 ${Math.round(progress * 100)}%…請保持畫面開啟`,
+          ),
+        analysisHost.current!,
+      );
+      setBusy(
+        matchSeconds === 0
+          ? '尋找音訊對齊點…'
+          : `比對前段 ${matchSeconds} 秒音訊…`,
+      );
       const result = await alignClips(
         clips[0],
         clips[1],
@@ -371,6 +389,7 @@ export default function Home() {
     } catch (e) {
       report(e);
     } finally {
+      void context.current?.suspend().catch(() => {});
       end();
     }
   }
@@ -536,8 +555,8 @@ export default function Home() {
         else exportDialog.current?.setAttribute('open', '');
       }
       // Stay in the tap gesture until resume() and both play() calls are issued.
-      jobContext = new AudioContext();
-      context.current = jobContext;
+      context.current ??= new AudioContext();
+      jobContext = context.current;
       const blob = await renderMovie({
         clips: clips as Clip[],
         boxes,
@@ -580,8 +599,7 @@ export default function Home() {
       );
       report(e);
     } finally {
-      if (jobContext) void jobContext.close().catch(() => {});
-      context.current = null;
+      if (jobContext) void jobContext.suspend().catch(() => {});
       end();
     }
   }
@@ -661,14 +679,18 @@ export default function Home() {
             <Check size={17} />
           )}
           <span>{busy || error || message}</span>
-          {busy && (busy.includes('比對') || busy.includes('融合')) && (
-            <button
-              onClick={() => controller.current?.abort()}
-              className="small-button"
-            >
-              取消
-            </button>
-          )}
+          {busy &&
+            (busy.includes('比對') ||
+              busy.includes('融合') ||
+              busy.includes('聲音') ||
+              busy.includes('對齊點')) && (
+              <button
+                onClick={() => controller.current?.abort()}
+                className="small-button"
+              >
+                取消
+              </button>
+            )}
         </div>
       )}
       <div className="workspace">
@@ -703,6 +725,11 @@ export default function Home() {
               不 match 或結果不理想，可換秒數再按「用音訊自動對齊」。
             </p>
           </fieldset>
+          <div
+            ref={analysisHost}
+            className="analysis-sources"
+            aria-label="音訊讀取中的影片"
+          />
           <div className="sources">
             {clips.map((clip, i) => (
               <div key={i} className="source-item">
@@ -743,10 +770,17 @@ export default function Home() {
                     <span>
                       {sec(clip.duration)} · {clip.width} × {clip.height}
                     </span>
-                    <Wave
-                      peaks={clip.peaks}
-                      color={i ? '#8cd0f5' : '#d5fb80'}
-                    />
+                    {clip.mono ? (
+                      <>
+                        <Wave
+                          peaks={clip.peaks}
+                          color={i ? '#8cd0f5' : '#d5fb80'}
+                        />
+                        <span>聲音已讀取，可直接換秒數重試</span>
+                      </>
+                    ) : (
+                      <span>按自動對齊後讀取聲音</span>
+                    )}
                     {clip.audioError && <small>{clip.audioError}</small>}
                   </div>
                 )}
@@ -755,14 +789,14 @@ export default function Home() {
           </div>
           <button
             className="primary"
-            disabled={locked || !clips[0]?.mono || !clips[1]?.mono}
+            disabled={locked || !clips[0] || !clips[1]}
             onClick={autoAlign}
           >
             <AudioLines size={18} />
             用音訊自動對齊
           </button>
           <p className="hint">
-            裁掉開頭的時間差。保留較長影片，較短的播完後顯示黑幕。
+            首次讀取聲音會依序播放兩部影片，約需兩片長度總和；完成後換秒數可直接重試。裁掉開頭時間差，保留較長影片。
           </p>
           {clips.every(Boolean) && (
             <details

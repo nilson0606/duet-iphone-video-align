@@ -87,3 +87,28 @@ for (const matchSeconds of [0, 1, 2, 3, 4, 5]) {
   }
 }
 console.log('Compiled worker passed all six matching-duration options.');
+
+const captureProcessor = fs.readFileSync(
+  path.join(publicRoot, 'audio-capture.worklet.js'),
+  'utf8',
+);
+let registered;
+vm.runInNewContext(captureProcessor, {
+  AudioWorkletProcessor: class {},
+  registerProcessor(name, ctor) {
+    registered = { name, ctor };
+  },
+});
+assert.equal(registered.name, 'duet-audio-capture');
+assert.equal(typeof registered.ctor, 'function');
+assert.ok(
+  source.includes('/audio-capture.worklet.js'),
+  'The player capture module must be reachable from the client',
+);
+assert.ok(
+  !source.includes('decodeAudioData'),
+  'Client must not decode the whole movie file',
+);
+console.log(
+  'Player audio processor is packaged; no whole-movie decode remains in the client.',
+);
