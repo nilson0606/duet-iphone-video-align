@@ -429,3 +429,52 @@ for (const [width, height] of [
     }
   });
 }
+
+test('fusion rasterizes text once and composites it above every video frame including black tails', async () => {
+  const env = environment();
+  env.args.clips[0].duration = 0.5;
+  env.args.texts = [
+    { id: 'title', text: '合拍', x: 0.1, y: 0.1, size: 0.06, color: '#ffffff' },
+  ];
+  let rasterizations = 0,
+    glyphDraws = 0;
+  Object.defineProperty(document, 'createElement', {
+    value: (tag) => {
+      assert.equal(tag, 'canvas');
+      rasterizations++;
+      return {
+        index: 'text',
+        currentTime: 0,
+        getContext: () => ({
+          save() {},
+          restore() {},
+          measureText: () => ({ width: 60 }),
+          strokeText() {},
+          fillText() {
+            glyphDraws++;
+          },
+        }),
+      };
+    },
+  });
+  try {
+    await renderMovie(env.args);
+    assert.equal(rasterizations, 1);
+    assert.equal(glyphDraws, 1);
+    const frames = env.draws.filter(
+      (d) => d[0] === 'black' && d[3] === 854,
+    ).length;
+    assert.ok(frames > 5);
+    assert.equal(
+      env.draws.filter((d) => d[0] === 'video' && d[1] === 'text').length,
+      frames,
+    );
+    assert.equal(env.draws.at(-1)[1], 'text');
+    assert.ok(
+      env.draws.some((d) => d[0] === 'black' && d[1] === 0 && d[3] === 427),
+    );
+    assert.equal(env.progress.at(-1), 1);
+  } finally {
+    env.restore();
+  }
+});

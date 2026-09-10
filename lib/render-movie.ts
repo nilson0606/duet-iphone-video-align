@@ -1,3 +1,4 @@
+import { createTextOverlay, type TextLayer } from './text-overlay.ts';
 import { timeline } from './timeline.mjs';
 import { playerAudio } from './player-audio.ts';
 import {
@@ -18,6 +19,7 @@ export type ExportPhase =
 export async function renderMovie(args: {
   clips: Clip[];
   boxes: Box[];
+  texts?: TextLayer[];
   order: number[];
   offset: number;
   width: number;
@@ -33,6 +35,7 @@ export async function renderMovie(args: {
   const {
     clips,
     boxes,
+    texts = [],
     order,
     offset,
     width,
@@ -110,7 +113,10 @@ export async function renderMovie(args: {
       15000,
       '影片定位逾時，請重試。（E07）',
     );
+    // Rasterize stationary text once; reuse it for every recorded frame.
+    const textOverlay = createTextOverlay(texts, width, height);
     drawComposition(ctx, clips, boxes, width, height, 0, plan.remaining, order);
+    if (textOverlay) ctx.drawImage(textOverlay, 0, 0);
     // A wake-lock prompt must never delay the recording startup.
     void navigator.wakeLock
       ?.request('screen')
@@ -214,6 +220,7 @@ export async function renderMovie(args: {
             plan.remaining,
             order,
           );
+          if (textOverlay) ctx.drawImage(textOverlay, 0, 0);
           nextDraw = (Math.floor(elapsed * 30 + 0.000001) + 1) / 30;
         }
         if (elapsed - lastReport >= 0.25) {
