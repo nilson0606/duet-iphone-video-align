@@ -1288,10 +1288,15 @@ button.video-box:not(:disabled):hover {
   margin: 16px 0;
   padding: 14px;
 }
-.crop-editor summary {
+.crop-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.crop-editor-head > b {
   font-size: 1rem;
-  cursor: pointer;
-  font-weight: 600;
 }
 .crop-editor .hint {
   font-size: 0.875rem;
