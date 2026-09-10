@@ -6,6 +6,16 @@ import {
   type TextLayer,
 } from '../lib/text-overlay';
 import { clamp } from '../lib/timeline.mjs';
+const textColors = [
+  ['白色', '#ffffff'],
+  ['黑色', '#000000'],
+  ['紅色', '#ff4d4f'],
+  ['黃色', '#ffdf00'],
+  ['綠色', '#49d17d'],
+  ['藍色', '#4da6ff'],
+  ['紫色', '#b388ff'],
+  ['粉紅', '#ff80bf'],
+] as const;
 type Props = {
   layers: TextLayer[];
   selected: string | null;
@@ -150,6 +160,12 @@ export function TextControls({
   onChange,
 }: Props) {
   const active = layers.find((t) => t.id === selected);
+  function remove(id: string) {
+    if (disabled) return;
+    const remaining = layers.filter((layer) => layer.id !== id);
+    onChange(remaining);
+    if (selected === id) onSelect(remaining[0]?.id ?? null);
+  }
   const edit = (patch: Partial<TextLayer>) =>
     onChange(layers.map((t) => (t.id === selected ? { ...t, ...patch } : t)));
   return (
@@ -184,17 +200,30 @@ export function TextControls({
       {!!layers.length && (
         <div className="text-tabs">
           {layers.map((t, i) => (
-            <button
-              key={t.id}
-              type="button"
-              disabled={disabled}
-              aria-pressed={selected === t.id}
-              onClick={() => onSelect(t.id)}
-            >
-              文字 {i + 1}
-            </button>
+            <div className="text-tab" key={t.id}>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-pressed={selected === t.id}
+                onClick={() => onSelect(t.id)}
+              >
+                文字 {i + 1}
+              </button>
+              <button
+                type="button"
+                className="text-delete"
+                disabled={disabled}
+                aria-label={`刪除文字 ${i + 1}`}
+                onClick={() => remove(t.id)}
+              >
+                刪除
+              </button>
+            </div>
           ))}
         </div>
+      )}
+      {!!layers.length && !active && (
+        <p className="hint">選取上方的文字項目，即可修改內容、大小與顏色。</p>
       )}
       {active && (
         <div className="text-settings">
@@ -221,25 +250,32 @@ export function TextControls({
               onChange={(e) => edit({ size: Number(e.target.value) / 100 })}
             />
           </label>
-          <label>
-            文字顏色
-            <input
-              type="color"
-              value={active.color}
-              disabled={disabled}
-              onChange={(e) => edit({ color: e.target.value })}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              onChange(layers.filter((t) => t.id !== active.id));
-              onSelect(null);
-            }}
-          >
-            刪除這段文字
-          </button>
+          <fieldset className="text-color-options" disabled={disabled}>
+            <legend>文字顏色</legend>
+            <div className="text-colors">
+              {textColors.map(([name, color]) => (
+                <button
+                  type="button"
+                  key={color}
+                  aria-label={`文字顏色：${name}`}
+                  aria-pressed={active.color.toLowerCase() === color}
+                  onClick={() => edit({ color })}
+                >
+                  <span aria-hidden="true" style={{ backgroundColor: color }} />
+                  {name}
+                </button>
+              ))}
+            </div>
+            <label className="text-custom-color">
+              自訂顏色
+              <input
+                type="color"
+                value={active.color}
+                disabled={disabled}
+                onChange={(e) => edit({ color: e.target.value })}
+              />
+            </label>
+          </fieldset>
         </div>
       )}
     </section>

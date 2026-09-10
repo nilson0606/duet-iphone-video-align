@@ -1712,3 +1712,47 @@ button.video-box:not(:disabled):hover {
   height: 44px;
   padding: 3px;
 }
+
+.text-tab {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.text-tab .text-delete {
+  color: #ffb3a7;
+}
+.text-color-options {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.text-color-options legend {
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+}
+.text-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.text-colors button {
+  gap: 6px;
+}
+.text-colors button[aria-pressed='true'] {
+  border-color: var(--lime);
+  outline: 1px solid var(--lime);
+}
+.text-colors button span {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #88908e;
+  border-radius: 50%;
+}
+.text-settings .text-custom-color {
+  margin-top: 12px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
