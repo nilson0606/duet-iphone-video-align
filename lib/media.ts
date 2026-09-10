@@ -14,6 +14,7 @@ export type Clip = {
   alignedThumbnail?: string;
   peaks: number[];
   audioError?: string;
+  audioReadMethod?: 'fast' | 'player';
 };
 export type Box = { x: number; y: number; width: number; height: number };
 export const RATE = 16000;
@@ -101,7 +102,7 @@ export async function loadClip(file: File): Promise<Clip> {
     if (!video.videoWidth) throw new Error('檔案沒有可讀取的影像。');
     const thumbnail = snapshot(video);
     // Import through the same native video path used by nivitrack iPhone.
-    // Sound is captured on the explicit Align gesture, never decoded as a file.
+    // Audio extraction begins only on the explicit Align gesture.
     return {
       file,
       url,

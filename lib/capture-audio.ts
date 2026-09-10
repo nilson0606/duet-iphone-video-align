@@ -1,3 +1,6 @@
+import { addSamples } from './audio-samples.ts';
+export { addSamples } from './audio-samples.ts';
+import { tryFastAudio } from './fast-audio.ts';
 import { RATE, seek, type Clip } from './media.ts';
 import { playerAudio } from './player-audio.ts';
 import { abortReason, mediaDeadline } from './media-deadline.ts';
@@ -11,23 +14,6 @@ function loadProcessor(context: AudioContext) {
     void pending.catch(() => modules.delete(context));
   }
   return pending;
-}
-
-// Place samples by media timestamps, not arrival time or the duration of a stall.
-export function addSamples(
-  sums: Float32Array,
-  counts: Uint16Array,
-  data: Float32Array,
-  mediaTime: number,
-  inputRate: number,
-  rate = RATE,
-) {
-  for (let i = 0; i < data.length; i++) {
-    const at = Math.floor((mediaTime + i / inputRate) * rate + 1e-6);
-    if (at < 0 || at >= sums.length) continue;
-    sums[at] += data[i];
-    counts[at]++;
-  }
 }
 
 async function captureOne(
@@ -157,8 +143,13 @@ export async function captureClipAudio(
   clips: Clip[],
   context: AudioContext,
   signal: AbortSignal,
-  onProgress: (index: number, progress: number) => void,
+  onProgress: (
+    index: number,
+    progress: number,
+    method: 'fast' | 'player',
+  ) => void,
   host: HTMLElement,
+  createFastWorker?: () => Worker,
 ) {
   const missing = clips
     .map((clip, index) => ({ clip, index }))
@@ -192,17 +183,32 @@ export async function captureClipAudio(
       12000,
       '音訊播放未啟動，請再按一次自動對齊。',
     );
-    await mediaDeadline(
-      loadProcessor(context),
-      session.signal,
-      15000,
-      '音訊分析程式無法載入，請重新整理後重試。',
-    );
     for (const { clip, index } of missing) {
-      onProgress(index, 0);
-      clip.mono = await captureOne(clip, context, session.signal, (p) =>
-        onProgress(index, p),
+      onProgress(index, 0, 'fast');
+      const fast = await tryFastAudio(
+        clip.file,
+        clip.duration,
+        session.signal,
+        (p) => onProgress(index, p, 'fast'),
+        createFastWorker,
       );
+      if (session.signal.aborted) throw abortReason(session.signal);
+      if (fast) {
+        clip.mono = fast;
+        clip.audioReadMethod = 'fast';
+      } else {
+        onProgress(index, 0, 'player');
+        await mediaDeadline(
+          loadProcessor(context),
+          session.signal,
+          15000,
+          '音訊分析程式無法載入，請重新整理後重試。',
+        );
+        clip.mono = await captureOne(clip, context, session.signal, (p) =>
+          onProgress(index, p, 'player'),
+        );
+        clip.audioReadMethod = 'player';
+      }
       const mono = clip.mono;
       clip.peaks = Array.from({ length: 64 }, (_, i) => {
         let peak = 0;

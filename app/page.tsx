@@ -35,6 +35,8 @@ import { alignClips } from '../lib/align-clips';
 import { captureClipAudio } from '../lib/capture-audio';
 // oxlint-disable-next-line import/default -- Vite emits this worker URL as a virtual default export.
 import analysisWorkerUrl from './align.worker.ts?worker&url';
+// oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
+import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -353,11 +355,17 @@ export default function Home() {
         clips as Clip[],
         context.current,
         controller.current!.signal,
-        (index, progress) =>
+        (index, progress, method) =>
           setBusy(
-            `讀取影片 ${names[index]} 聲音 ${Math.round(progress * 100)}%…請保持畫面開啟`,
+            method === 'fast'
+              ? `快速讀取影片 ${names[index]} 聲音 ${Math.round(progress * 100)}%…`
+              : `改用相容模式讀取影片 ${names[index]} 聲音 ${Math.round(progress * 100)}%…請保持畫面開啟`,
           ),
         analysisHost.current!,
+        () =>
+          new Worker(new URL(decodeWorkerUrl, window.location.href), {
+            type: 'module',
+          }),
       );
       setBusy(
         matchSeconds === 0
@@ -776,7 +784,12 @@ export default function Home() {
                           peaks={clip.peaks}
                           color={i ? '#8cd0f5' : '#d5fb80'}
                         />
-                        <span>聲音已讀取，可直接換秒數重試</span>
+                        <span>
+                          {clip.audioReadMethod === 'fast'
+                            ? '快速讀取完成'
+                            : '相容模式讀取完成'}
+                          ，可直接換秒數重試
+                        </span>
                       </>
                     ) : (
                       <span>按自動對齊後讀取聲音</span>
@@ -796,7 +809,7 @@ export default function Home() {
             用音訊自動對齊
           </button>
           <p className="hint">
-            首次讀取聲音會依序播放兩部影片，約需兩片長度總和；完成後換秒數可直接重試。裁掉開頭時間差，保留較長影片。
+            優先快速讀取音軌；格式不支援時自動改用相容模式，依原速播放讀取。請保持畫面開啟，完成後換秒數可直接重試。
           </p>
           {clips.every(Boolean) && (
             <details

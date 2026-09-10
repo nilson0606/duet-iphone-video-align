@@ -252,7 +252,8 @@ function environment(t, mode = 'success') {
     get moduleCalls() {
       return moduleCalls;
     },
-    run: () => captureClipAudio(clips, context, abort.signal, () => {}, host),
+    run: (factory) =>
+      captureClipAudio(clips, context, abort.signal, () => {}, host, factory),
   };
 }
 
@@ -355,4 +356,84 @@ test('importing an iPhone movie uses the video element without reading or decodi
   assert.equal(clip.audioError, undefined);
   assert.equal(clip.width, 1920);
   disposeClip(clip);
+});
+
+function fakeFastWorker(action) {
+  return {
+    terminated: false,
+    postMessage() {
+      queueMicrotask(() => action(this));
+    },
+    terminate() {
+      this.terminated = true;
+    },
+  };
+}
+test('fast success skips full playback and worklet loading, then reuses cache', async (t) => {
+  const env = environment(t);
+  const workers = [];
+  const factory = () => {
+    const w = fakeFastWorker((worker) =>
+      worker.onmessage({
+        data: {
+          type: 'done',
+          mono: new Float32Array(48000).fill(0.2),
+        },
+      }),
+    );
+    workers.push(w);
+    return w;
+  };
+  await env.run(factory);
+  assert.equal(env.moduleCalls, 0);
+  assert.ok(
+    env.clips.every(
+      (c) => c.video.playCalls === 1 && c.audioReadMethod === 'fast',
+    ),
+  );
+  assert.ok(workers.every((w) => w.terminated));
+  await env.run(factory);
+  assert.equal(workers.length, 2);
+});
+test('EncodingError after fast A falls back only for B and keeps both audio caches usable', async (t) => {
+  const env = environment(t);
+  let calls = 0;
+  await env.run(() =>
+    fakeFastWorker((worker) => {
+      if (++calls === 1)
+        worker.onmessage({
+          data: { type: 'done', mono: new Float32Array(48000).fill(0.3) },
+        });
+      else
+        worker.onerror({
+          message: 'EncodingError: decoding failed',
+          preventDefault() {},
+        });
+    }),
+  );
+  assert.deepEqual(
+    env.clips.map((c) => c.audioReadMethod),
+    ['fast', 'player'],
+  );
+  assert.deepEqual(
+    env.clips.map((c) => c.video.playCalls),
+    [1, 2],
+  );
+  assert.equal(env.moduleCalls, 1);
+  assert.ok(env.clips.every((c) => c.mono.length === 48000 && c.video.paused));
+});
+test('cancelling fast extraction terminates worker without starting player fallback', async (t) => {
+  const env = environment(t);
+  const worker = fakeFastWorker(() => env.abort.abort());
+  await assert.rejects(
+    env.run(() => worker),
+    { name: 'AbortError' },
+  );
+  assert.equal(worker.terminated, true);
+  assert.equal(env.moduleCalls, 0);
+  assert.ok(
+    env.clips.every(
+      (c) => !c.mono && c.video.playCalls === 1 && c.video.paused,
+    ),
+  );
 });

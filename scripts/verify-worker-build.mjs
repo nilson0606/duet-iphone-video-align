@@ -119,3 +119,82 @@ for (const matchSeconds of [0, 5]) {
   assert.ok(Math.abs(reply.result.offset - 2.34) < 0.04, JSON.stringify(reply));
 }
 console.log('Compiled worker ignores the false 60 ms startup-silence match.');
+
+// Exercise the shipped decoder bundle with a real PCM MOV and with unsupported AAC.
+const fastMatches = source.match(
+  /\/_next\/static\/decode-audio\.worker-[\w-]+\.js/g,
+);
+assert.ok(fastMatches?.length, 'Fast audio worker URL must reach the browser');
+const fastSource = fs.readFileSync(
+  path.join(publicRoot, fastMatches[0]),
+  'utf8',
+);
+const fastDir = fs.mkdtempSync(path.resolve('.tmp/compiled-fast-'));
+try {
+  const pcmFile = path.join(fastDir, 'sample.mov');
+  execFileSync('ffmpeg', [
+    '-v',
+    'error',
+    '-y',
+    '-i',
+    'public/demo/camera-a.mp4',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'pcm_s16le',
+    pcmFile,
+  ]);
+  let fastReply;
+  const fastSelf = {
+    postMessage: (data) => {
+      fastReply = data;
+    },
+  };
+  vm.runInNewContext(
+    fastSource,
+    {
+      self: fastSelf,
+      Blob,
+      File,
+      TextEncoder,
+      TextDecoder,
+      performance,
+      console,
+      ArrayBuffer,
+      Uint8Array,
+      Uint16Array,
+      Int16Array,
+      Float32Array,
+      DataView,
+      setTimeout,
+      clearTimeout,
+      DOMException,
+      URL,
+      atob,
+      btoa,
+    },
+    { timeout: 5000 },
+  );
+  await fastSelf.onmessage({
+    data: { file: new Blob([fs.readFileSync(pcmFile)]), duration: 22 },
+  });
+  assert.equal(fastReply?.type, 'done');
+  assert.equal(fastReply.mono.length, 352000);
+  self.onmessage({
+    data: { a: fastReply.mono, b, rate: 16000, matchSeconds: 0 },
+  });
+  assert.equal(reply.result.confident, true);
+  assert.ok(Math.abs(reply.result.offset - 2.34) < 0.04);
+  await fastSelf.onmessage({
+    data: {
+      file: new Blob([fs.readFileSync('public/demo/camera-a.mp4')]),
+      duration: 22,
+    },
+  });
+  assert.equal(fastReply?.type, 'fallback');
+  console.log(
+    'Compiled fast decoder reads MOV audio and safely falls back without a native AAC decoder.',
+  );
+} finally {
+  fs.rmSync(fastDir, { recursive: true, force: true });
+}
