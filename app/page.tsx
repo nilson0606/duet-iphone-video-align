@@ -1259,7 +1259,7 @@ export default function Home() {
               {aligned && plan
                 ? `輸出 ${sec(plan.duration)} · ${dims[0]} × ${dims[1]} · 30 fps`
                 : '等待兩部來源影片'}
-              <small>手機版：每部最長 3 分鐘、250 MB</small>
+              <small>手機版：每部最長 10 分鐘、250 MB</small>
             </span>
             <button
               className="primary"
