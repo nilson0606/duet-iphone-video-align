@@ -131,3 +131,7 @@ npm run build
 GitHub 儲存庫使用 `.github/workflows/pages.yml`，在 `main` 推送後自動建置與發布。Settings → Pages 的 Source 使用 GitHub Actions，實際路徑由 configure-pages 回傳，自訂網域或帳號根站亦使用相同流程。影片仍在裝置本機處理。還原 ZIP 和本機交接文件不納入此次 GitHub 推送。
 
 驗證：`node scripts/verify-worker-build.mjs --pages`（需要 FFmpeg）會實際執行編譯後的對齊／MOV 解碼 Worker，涵蓋解碼失敗回退；`npm test` 執行共用邏輯測試。
+
+## 目前版本與發布目標
+
+2026-09-12 起以 GitHub Pages 作為主要發布目標，除非使用者另外要求，不再同步發布至 Sites。正式網址：https://nilson0606.github.io/duet-iphone-video-align/ 。目前頁首顯示 `V22`，手機與桌面皆保留；版號依序使用 V22、V23 等格式，不補前導 0。版號定義位於 `app/page.tsx` 的 `APP_VERSION`。

@@ -96,6 +96,15 @@ main {
   padding-left: 12px;
   color: var(--muted);
 }
+.brand .app-version {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--lime);
+  white-space: nowrap;
+}
 .local-badge {
   font-size: 13px;
   color: #b4c1bb;

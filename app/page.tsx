@@ -41,6 +41,7 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
+const APP_VERSION = 'V22';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -659,6 +660,9 @@ export default function Home() {
           <Layers2 />
           <b>
             合拍<span>DUET</span>
+            <small className="app-version" aria-label={`版本 ${APP_VERSION}`}>
+              {APP_VERSION}
+            </small>
           </b>
         </div>
         <span className="local-badge">
