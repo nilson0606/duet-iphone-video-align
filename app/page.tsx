@@ -41,7 +41,7 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
-const APP_VERSION = 'V22';
+const APP_VERSION = 'V23';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -82,7 +82,7 @@ export default function Home() {
     score: number;
     confident: boolean;
   } | null>(null);
-  const [ratio, setRatio] = useState('16:9');
+  const [ratio, setRatio] = useState('9:16');
   const [boxes, setBoxes] = useState<Box[]>([
     { x: 0, y: 0.25, width: 0.5, height: 0.5 },
     { x: 0.5, y: 0.25, width: 0.5, height: 0.5 },
@@ -94,7 +94,7 @@ export default function Home() {
   const [order, setOrder] = useState([0, 1]);
   const [audio, setAudio] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [quality, setQuality] = useState('720');
+  const [quality, setQuality] = useState('1080');
   const [exportPhase, setExportPhase] = useState<ExportPhase>('preparing');
   const [exportMessage, setExportMessage] = useState('');
   const exportDialog = useRef<HTMLDialogElement>(null);
