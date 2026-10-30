@@ -89,17 +89,32 @@ function environment({
       this.playCalls++;
       assert.equal(
         this.muted,
-        this.index !== args.audio,
+        args.audioAdvanceMs > 0 ? this.index !== 2 : this.index !== args.audio,
         'Only the chosen audio player is unmuted',
       );
       this.paused = false;
       return playPending ? new Promise(() => {}) : Promise.resolve();
+    }
+    removeAttribute() {}
+    load() {
+      this.unloaded = true;
+    }
+    remove() {
+      this.removed = true;
     }
     pause() {
       this.paused = true;
     }
   }
   const videos = [new Video(0), new Video(1)];
+  const extraVideos = [];
+  doc.createElement = () => {
+    const video = new Video(2);
+    video.muted = false;
+    extraVideos.push(video);
+    return video;
+  };
+  const delays = [];
   const track = () => ({
     stopped: false,
     stop() {
@@ -125,6 +140,18 @@ function environment({
       return audioSource;
     },
     destination: {},
+    createDelay(max) {
+      const delay = {
+        max,
+        delayTime: { value: 0 },
+        connect() {},
+        disconnect() {
+          this.disconnected = true;
+        },
+      };
+      delays.push(delay);
+      return delay;
+    },
     createGain() {
       const gain = { gain: { value: 1 }, connect() {}, disconnect() {} };
       gains.push(gain);
@@ -206,7 +233,7 @@ function environment({
     value: (cb) =>
       setTimeout(() => {
         context.currentTime += frameStep;
-        for (const v of videos)
+        for (const v of [...videos, ...extraVideos])
           if (!v.paused) v._time += frameStep * v.playbackRate;
         if (recording && lag && !failedOnce) {
           videos[1]._time -= lag;
@@ -258,6 +285,8 @@ function environment({
     progress,
     draws,
     audioSource,
+    extraVideos,
+    delays,
     recorderOptions,
     gains,
     tracks: [audioTrack, videoTrack],
@@ -474,6 +503,79 @@ test('fusion rasterizes text once and composites it above every video frame incl
       env.draws.some((d) => d[0] === 'black' && d[1] === 0 && d[3] === 427),
     );
     assert.equal(env.progress.at(-1), 1);
+  } finally {
+    env.restore();
+  }
+});
+
+for (const audio of [0, 1]) {
+  test(`+100 ms advances selected audio ${audio} without changing visual trim`, async () => {
+    const env = environment({ clockDuration: 2 });
+    try {
+      env.args.audio = audio;
+      env.args.offset = 0.3;
+      env.args.audioAdvanceMs = 100;
+      await renderMovie(env.args);
+      assert.deepEqual(env.videos[0].seeks, [0.3]);
+      assert.deepEqual(env.videos[1].seeks, []);
+      assert.deepEqual(env.extraVideos[0].seeks, [audio === 0 ? 0.4 : 0.1]);
+      assert.equal(env.audioSource.video, env.extraVideos[0]);
+      assert.ok(
+        env.extraVideos[0].paused &&
+          env.extraVideos[0].removed &&
+          env.extraVideos[0].unloaded,
+      );
+      assert.equal(env.delays.length, 0);
+    } finally {
+      env.restore();
+    }
+  });
+  test(`-100 ms delays audio ${audio} through Web Audio without moving video`, async () => {
+    const env = environment();
+    try {
+      env.args.audio = audio;
+      env.args.audioAdvanceMs = -100;
+      await renderMovie(env.args);
+      assert.equal(env.delays[0].delayTime.value, 0.1);
+      assert.ok(env.delays[0].disconnected);
+      assert.equal(env.audioSource.video, env.videos[audio]);
+      assert.ok(env.videos.every((v) => v.seeks.length === 0));
+      assert.equal(env.extraVideos.length, 0);
+    } finally {
+      env.restore();
+    }
+  });
+}
+test('audio adjustment rejects invalid values', async () => {
+  const env = environment();
+  try {
+    for (const audioAdvanceMs of [-101, 101, NaN, Infinity])
+      await assert.rejects(
+        renderMovie({ ...env.args, audioAdvanceMs }),
+        /100 ms/,
+      );
+  } finally {
+    env.restore();
+  }
+});
+test('advanced audio player is released on recording failure', async () => {
+  const env = environment({ startFault: true });
+  try {
+    env.args.audioAdvanceMs = 50;
+    await assert.rejects(renderMovie(env.args), /encoder start failed/);
+    assert.ok(env.extraVideos[0].paused && env.extraVideos[0].removed);
+  } finally {
+    env.restore();
+  }
+});
+
+test('+1 ms is not skipped by visual seek tolerance', async () => {
+  const env = environment();
+  try {
+    env.args.audioAdvanceMs = 1;
+    await renderMovie(env.args);
+    assert.deepEqual(env.extraVideos[0].seeks, [0.001]);
+    assert.ok(env.videos.every((v) => v.seeks.length === 0));
   } finally {
     env.restore();
   }

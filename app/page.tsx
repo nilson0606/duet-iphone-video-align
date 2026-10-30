@@ -41,7 +41,7 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
-const APP_VERSION = 'V23';
+const APP_VERSION = 'V24';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -93,6 +93,14 @@ export default function Home() {
   const [lockAspect, setLockAspect] = useState(true);
   const [order, setOrder] = useState([0, 1]);
   const [audio, setAudio] = useState(0);
+  const [audioAdvanceMs, setAudioAdvanceMs] = useState(0);
+  const [audioAdvanceInput, setAudioAdvanceInput] = useState('0');
+  function changeAudioAdvance(value: number) {
+    const bounded = Math.max(-100, Math.min(100, Math.round(value)));
+    setAudioAdvanceMs(bounded);
+    setAudioAdvanceInput(String(bounded));
+    clearResult();
+  }
   const [progress, setProgress] = useState(0);
   const [quality, setQuality] = useState('1080');
   const [exportPhase, setExportPhase] = useState<ExportPhase>('preparing');
@@ -589,6 +597,7 @@ export default function Home() {
         width: dims[0],
         height: dims[1],
         audio,
+        audioAdvanceMs,
         context: jobContext,
         canvas: exportCanvas.current!,
         sourceHost: sourceHost.current!,
@@ -1240,6 +1249,74 @@ export default function Home() {
               </div>
             </div>
           )}
+          <fieldset disabled={locked} className="export-quality audio-adjust">
+            <legend>融合音訊微調</legend>
+            <label>
+              聲音提前／落後（ms）
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                step="1"
+                value={audioAdvanceMs}
+                aria-label="融合音訊微調"
+                onChange={(e) => {
+                  changeAudioAdvance(Number(e.target.value));
+                }}
+              />
+              <input
+                type="text"
+                inputMode="text"
+                aria-label="手動輸入音訊微調毫秒"
+                value={audioAdvanceInput}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!/^[+-]?\d*$/.test(raw)) return;
+                  setAudioAdvanceInput(raw);
+                  const value = Number(raw);
+                  setAudioAdvanceMs(
+                    Number.isFinite(value)
+                      ? Math.max(-100, Math.min(100, value))
+                      : 0,
+                  );
+                  clearResult();
+                }}
+                onBlur={() => setAudioAdvanceInput(String(audioAdvanceMs))}
+              />
+              <output>
+                {audioAdvanceMs > 0 ? '+' : ''}
+                {audioAdvanceMs} ms
+              </output>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                changeAudioAdvance(audioAdvanceMs - 1);
+              }}
+            >
+              −1 ms
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                changeAudioAdvance(0);
+              }}
+            >
+              歸零
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                changeAudioAdvance(audioAdvanceMs + 1);
+              }}
+            >
+              +1 ms
+            </button>
+            <p className="hint">
+              正值＝聲音提前，負值＝聲音落後；最多 ±100
+              ms。套用至選定音軌，重新融合後可預覽效果。
+            </p>
+          </fieldset>
           <div className="export-quality">
             <label>
               輸出畫質

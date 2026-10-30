@@ -1,9 +1,10 @@
 import { createTextOverlay, type TextLayer } from './text-overlay.ts';
 import { timeline } from './timeline.mjs';
-import { playerAudio } from './player-audio.ts';
+import { playerAudio, releasePlayerAudio } from './player-audio.ts';
 import {
   drawComposition,
   seek,
+  waitEvent,
   supportedMime,
   type Clip,
   type Box,
@@ -25,6 +26,8 @@ export async function renderMovie(args: {
   width: number;
   height: number;
   audio: number;
+  /** Positive advances sound; negative delays it, limited to 100 ms. */
+  audioAdvanceMs?: number;
   context: AudioContext;
   canvas: HTMLCanvasElement;
   sourceHost: HTMLElement;
@@ -41,6 +44,7 @@ export async function renderMovie(args: {
     width,
     height,
     audio,
+    audioAdvanceMs = 0,
     context,
     canvas,
     sourceHost,
@@ -48,6 +52,9 @@ export async function renderMovie(args: {
     onProgress,
     onStage,
   } = args;
+  if (!Number.isFinite(audioAdvanceMs) || Math.abs(audioAdvanceMs) > 100)
+    throw new Error('音訊微調須介於 −100 至 +100 ms。');
+  const advance = audioAdvanceMs / 1000;
   const plan = timeline(clips[0].duration, clips[1].duration, offset);
   const session = new AbortController();
   const cancel = () => session.abort(abortReason(signal));
@@ -68,6 +75,8 @@ export async function renderMovie(args: {
   let recorder: MediaRecorder | undefined,
     source: MediaElementAudioSourceNode | undefined;
   let audioGate: GainNode | undefined;
+  let delay: DelayNode | undefined;
+  let audioPlayer: HTMLVideoElement | undefined;
   let wake: WakeLockSentinel | undefined,
     stopping = false;
   try {
@@ -84,15 +93,29 @@ export async function renderMovie(args: {
       throw new Error('此瀏覽器無法錄製合成畫面。（E03）');
     // The selected player's audio feeds the recorder, like nivitrack iPhone.
     // The monitor is silent; the other video stays muted.
-    source = playerAudio(context, clips[audio].video);
+    // An independent player advances sound without moving either visual track.
+    if (advance > 0) {
+      audioPlayer = document.createElement('video');
+      audioPlayer.src = clips[audio].url;
+      audioPlayer.preload = 'auto';
+      audioPlayer.playsInline = true;
+      sourceHost.appendChild(audioPlayer);
+    }
+    source = playerAudio(context, audioPlayer ?? clips[audio].video);
     audioGate = context.createGain();
     audioGate.gain.value = 0;
     destination = context.createMediaStreamDestination();
     source.connect(audioGate);
-    audioGate.connect(destination);
+    if (advance < 0) {
+      delay = context.createDelay(0.1);
+      delay.delayTime.value = -advance;
+      // Gate before delay: startup stays silent and the delayed tail can drain.
+      audioGate.connect(delay);
+      delay.connect(destination);
+    } else audioGate.connect(destination);
     const resumed = context.resume();
     const primed = clips.map((c, i) => {
-      c.video.muted = i !== audio;
+      c.video.muted = !!audioPlayer || i !== audio;
       c.video.volume = 1;
       c.video.playsInline = true;
       c.video.playbackRate = 1;
@@ -100,16 +123,36 @@ export async function renderMovie(args: {
       return c.video.play();
     });
     await run(
-      Promise.all([resumed, ...primed]),
+      Promise.all([
+        resumed,
+        ...primed,
+        ...(audioPlayer ? [audioPlayer.play()] : []),
+      ]),
       12000,
       '影片尚未開始播放。請在 Safari 開啟同一網址後重試。（E04）',
     );
     clips.forEach((c) => c.video.pause());
+    audioPlayer?.pause();
     onStage('preparing', '正在定位兩部影片的同步起點…');
     await run(
-      Promise.all(
-        clips.map((c, i) => seek(c.video, plan.starts[i], session.signal)),
-      ),
+      Promise.all([
+        ...clips.map((c, i) => seek(c.video, plan.starts[i], session.signal)),
+        ...(audioPlayer
+          ? [
+              waitEvent(
+                audioPlayer,
+                'seeked',
+                () => {
+                  audioPlayer!.currentTime = Math.min(
+                    plan.starts[audio] + advance,
+                    clips[audio].duration - 0.001,
+                  );
+                },
+                session.signal,
+              ),
+            ]
+          : []),
+      ]),
       15000,
       '影片定位逾時，請重試。（E07）',
     );
@@ -158,7 +201,10 @@ export async function renderMovie(args: {
     });
     void finished.catch(() => {});
     await run(
-      Promise.all(clips.map((c) => c.video.play())),
+      Promise.all([
+        ...clips.map((c) => c.video.play()),
+        ...(audioPlayer ? [audioPlayer.play()] : []),
+      ]),
       12000,
       '同步播放尚未啟動，請重新融合。（E10）',
     );
@@ -202,7 +248,12 @@ export async function renderMovie(args: {
           resolve();
           return;
         }
-        if (elapsed >= plan.remaining[audio]) audioGate!.gain.value = 0;
+        if (
+          elapsed >= Math.max(0, plan.remaining[audio] - Math.max(0, advance))
+        ) {
+          audioGate!.gain.value = 0;
+          audioPlayer?.pause();
+        }
         for (let i = 0; i < clips.length; i++) {
           const video = clips[i].video;
           if (elapsed >= plan.remaining[i] && !video.paused) video.pause();
@@ -260,6 +311,14 @@ export async function renderMovie(args: {
       audioGate.gain.value = 0;
       source?.disconnect(audioGate);
       audioGate.disconnect();
+    }
+    delay?.disconnect();
+    if (audioPlayer) {
+      audioPlayer.pause();
+      releasePlayerAudio(audioPlayer);
+      audioPlayer.removeAttribute('src');
+      audioPlayer.load();
+      audioPlayer.remove();
     }
     destination?.disconnect();
     stream?.getTracks().forEach((t) => t.stop());

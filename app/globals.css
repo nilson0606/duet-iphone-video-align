@@ -1765,3 +1765,25 @@ button.video-box:not(:disabled):hover {
   align-items: center;
   gap: 10px;
 }
+
+.audio-adjust {
+  margin: 0;
+  min-width: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.audio-adjust label {
+  flex-wrap: wrap;
+  width: 100%;
+}
+.audio-adjust input[type='range'] {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.audio-adjust input[type='text'] {
+  width: 80px;
+  font-size: 16px;
+}
+.audio-adjust .hint {
+  width: 100%;
+}
