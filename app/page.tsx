@@ -41,7 +41,7 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
-const APP_VERSION = 'V24';
+const APP_VERSION = 'V25';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -93,8 +93,8 @@ export default function Home() {
   const [lockAspect, setLockAspect] = useState(true);
   const [order, setOrder] = useState([0, 1]);
   const [audio, setAudio] = useState(0);
-  const [audioAdvanceMs, setAudioAdvanceMs] = useState(0);
-  const [audioAdvanceInput, setAudioAdvanceInput] = useState('0');
+  const [audioAdvanceMs, setAudioAdvanceMs] = useState(30);
+  const [audioAdvanceInput, setAudioAdvanceInput] = useState('30');
   function changeAudioAdvance(value: number) {
     const bounded = Math.max(-100, Math.min(100, Math.round(value)));
     setAudioAdvanceMs(bounded);
