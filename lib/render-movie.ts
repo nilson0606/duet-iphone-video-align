@@ -26,7 +26,7 @@ export async function renderMovie(args: {
   width: number;
   height: number;
   audio: number;
-  /** Positive advances sound; negative delays it, limited to 100 ms. */
+  /** Positive advances sound; negative delays it, limited to 2000 ms. */
   audioAdvanceMs?: number;
   context: AudioContext;
   canvas: HTMLCanvasElement;
@@ -52,8 +52,8 @@ export async function renderMovie(args: {
     onProgress,
     onStage,
   } = args;
-  if (!Number.isFinite(audioAdvanceMs) || Math.abs(audioAdvanceMs) > 100)
-    throw new Error('音訊微調須介於 −100 至 +100 ms。');
+  if (!Number.isFinite(audioAdvanceMs) || Math.abs(audioAdvanceMs) > 2000)
+    throw new Error('音訊微調須介於 −2000 至 +2000 ms。');
   const advance = audioAdvanceMs / 1000;
   const plan = timeline(clips[0].duration, clips[1].duration, offset);
   const session = new AbortController();
@@ -107,7 +107,7 @@ export async function renderMovie(args: {
     destination = context.createMediaStreamDestination();
     source.connect(audioGate);
     if (advance < 0) {
-      delay = context.createDelay(0.1);
+      delay = context.createDelay(2);
       delay.delayTime.value = -advance;
       // Gate before delay: startup stays silent and the delayed tail can drain.
       audioGate.connect(delay);

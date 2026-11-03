@@ -509,16 +509,16 @@ test('fusion rasterizes text once and composites it above every video frame incl
 });
 
 for (const audio of [0, 1]) {
-  test(`+100 ms advances selected audio ${audio} without changing visual trim`, async () => {
-    const env = environment({ clockDuration: 2 });
+  test(`+2000 ms advances selected audio ${audio} without changing visual trim`, async () => {
+    const env = environment({ clockDuration: 4 });
     try {
       env.args.audio = audio;
       env.args.offset = 0.3;
-      env.args.audioAdvanceMs = 100;
+      env.args.audioAdvanceMs = 2000;
       await renderMovie(env.args);
       assert.deepEqual(env.videos[0].seeks, [0.3]);
       assert.deepEqual(env.videos[1].seeks, []);
-      assert.deepEqual(env.extraVideos[0].seeks, [audio === 0 ? 0.4 : 0.1]);
+      assert.deepEqual(env.extraVideos[0].seeks, [audio === 0 ? 2.3 : 2]);
       assert.equal(env.audioSource.video, env.extraVideos[0]);
       assert.ok(
         env.extraVideos[0].paused &&
@@ -530,13 +530,13 @@ for (const audio of [0, 1]) {
       env.restore();
     }
   });
-  test(`-100 ms delays audio ${audio} through Web Audio without moving video`, async () => {
+  test(`-2000 ms delays audio ${audio} through Web Audio without moving video`, async () => {
     const env = environment();
     try {
       env.args.audio = audio;
-      env.args.audioAdvanceMs = -100;
+      env.args.audioAdvanceMs = -2000;
       await renderMovie(env.args);
-      assert.equal(env.delays[0].delayTime.value, 0.1);
+      assert.equal(env.delays[0].delayTime.value, 2);
       assert.ok(env.delays[0].disconnected);
       assert.equal(env.audioSource.video, env.videos[audio]);
       assert.ok(env.videos.every((v) => v.seeks.length === 0));
@@ -549,10 +549,10 @@ for (const audio of [0, 1]) {
 test('audio adjustment rejects invalid values', async () => {
   const env = environment();
   try {
-    for (const audioAdvanceMs of [-101, 101, NaN, Infinity])
+    for (const audioAdvanceMs of [-2001, 2001, NaN, Infinity])
       await assert.rejects(
         renderMovie({ ...env.args, audioAdvanceMs }),
-        /100 ms/,
+        /2000 ms/,
       );
   } finally {
     env.restore();

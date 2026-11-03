@@ -41,7 +41,7 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
-const APP_VERSION = 'V25';
+const APP_VERSION = 'V26';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -96,7 +96,7 @@ export default function Home() {
   const [audioAdvanceMs, setAudioAdvanceMs] = useState(30);
   const [audioAdvanceInput, setAudioAdvanceInput] = useState('30');
   function changeAudioAdvance(value: number) {
-    const bounded = Math.max(-100, Math.min(100, Math.round(value)));
+    const bounded = Math.max(-2000, Math.min(2000, Math.round(value)));
     setAudioAdvanceMs(bounded);
     setAudioAdvanceInput(String(bounded));
     clearResult();
@@ -1255,8 +1255,8 @@ export default function Home() {
               聲音提前／落後（ms）
               <input
                 type="range"
-                min="-100"
-                max="100"
+                min="-2000"
+                max="2000"
                 step="1"
                 value={audioAdvanceMs}
                 aria-label="融合音訊微調"
@@ -1276,7 +1276,7 @@ export default function Home() {
                   const value = Number(raw);
                   setAudioAdvanceMs(
                     Number.isFinite(value)
-                      ? Math.max(-100, Math.min(100, value))
+                      ? Math.max(-2000, Math.min(2000, value))
                       : 0,
                   );
                   clearResult();
@@ -1313,7 +1313,7 @@ export default function Home() {
               +1 ms
             </button>
             <p className="hint">
-              正值＝聲音提前，負值＝聲音落後；最多 ±100
+              正值＝聲音提前，負值＝聲音落後；最多 ±2000
               ms。套用至選定音軌，重新融合後可預覽效果。
             </p>
           </fieldset>
