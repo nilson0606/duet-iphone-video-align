@@ -2,6 +2,7 @@ import type { Crop } from './crop.ts';
 import { releasePlayerAudio } from './player-audio.ts';
 import { isClipActive } from './timeline.mjs';
 export type Clip = {
+  importNote?: string;
   crop?: Crop;
   file: File;
   url: string;

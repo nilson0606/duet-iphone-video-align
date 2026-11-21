@@ -41,7 +41,10 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
-const APP_VERSION = 'V26';
+import { normalizeImport, type ImportMode } from '../lib/normalize-import';
+// oxlint-disable-next-line import/default -- Vite worker URL.
+import normalizeWorkerUrl from './normalize.worker.ts?worker&url';
+const APP_VERSION = 'V27';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -103,6 +106,7 @@ export default function Home() {
   }
   const [progress, setProgress] = useState(0);
   const [quality, setQuality] = useState('1080');
+  const [importMode, setImportMode] = useState<ImportMode>('auto');
   const [exportPhase, setExportPhase] = useState<ExportPhase>('preparing');
   const [exportMessage, setExportMessage] = useState('');
   const exportDialog = useRef<HTMLDialogElement>(null);
@@ -261,9 +265,26 @@ export default function Home() {
     clearResult();
   }
   async function importOne(file: File, index: number) {
-    if (!start(`讀取影片 ${names[index]}…`)) return;
+    if (!start(`格式檢查影片 ${names[index]}…`)) return;
     try {
-      const clip = await loadClip(file);
+      const signal = controller.current!.signal;
+      const prepared = await normalizeImport(
+        file,
+        importMode,
+        signal,
+        () =>
+          new Worker(new URL(normalizeWorkerUrl, window.location.href), {
+            type: 'module',
+          }),
+        setBusy,
+      );
+      const clip = await loadClip(prepared.file);
+      clip.importNote = prepared.note;
+      if (signal.aborted) {
+        disposeClip(clip);
+        throw signal.reason ?? new DOMException('已取消', 'AbortError');
+      }
+      if (prepared.converted) setQuality('720');
       if (!mounted.current) {
         disposeClip(clip);
         return;
@@ -718,6 +739,7 @@ export default function Home() {
           {busy &&
             (busy.includes('比對') ||
               busy.includes('融合') ||
+              busy.includes('格式') ||
               busy.includes('聲音') ||
               busy.includes('對齊點')) && (
               <button
@@ -766,6 +788,23 @@ export default function Home() {
             className="analysis-sources"
             aria-label="音訊讀取中的影片"
           />
+          <label className="hint">
+            匯入格式處理
+            <select
+              value={importMode}
+              disabled={locked}
+              onChange={(e) => setImportMode(e.target.value as ImportMode)}
+            >
+              <option value="auto">自動檢查，需要時先轉換</option>
+              <option value="always">一律轉換（螢幕錄影建議）</option>
+              <option value="original">直接使用原片</option>
+            </select>
+          </label>
+          <p className="hint">
+            相容轉換為 H.264／AAC、固定 30 fps，最長邊
+            1280。畫質會降低以減輕融合負擔，轉換後預選 720p
+            輸出。全程在裝置處理，需保持網頁開啟，可取消。仍卡頓時請選「一律轉換」後重新匯入。
+          </p>
           <div className="sources">
             {clips.map((clip, i) => (
               <div key={i} className="source-item">
@@ -822,6 +861,7 @@ export default function Home() {
                     ) : (
                       <span>按自動對齊後讀取聲音</span>
                     )}
+                    {clip.importNote && <small>{clip.importNote}</small>}
                     {clip.audioError && <small>{clip.audioError}</small>}
                   </div>
                 )}
