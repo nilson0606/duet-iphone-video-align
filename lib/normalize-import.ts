@@ -1,9 +1,8 @@
 import { abortReason } from './media-deadline.ts';
 
-export type ImportMode = 'auto' | 'always' | 'original';
 export function normalizeImport(
   file: File,
-  mode: ImportMode,
+  shouldConvert: boolean,
   signal: AbortSignal,
   createWorker: () => Worker,
   onProgress: (message: string) => void,
@@ -11,7 +10,7 @@ export function normalizeImport(
   if (signal.aborted) return Promise.reject(abortReason(signal));
   if (file.size > 250 * 1024 * 1024)
     return Promise.reject(new Error('每部影片上限 250 MB。'));
-  if (mode === 'original')
+  if (!shouldConvert)
     return Promise.resolve({ file, note: '直接使用原片', converted: false });
   return new Promise((resolve, reject) => {
     let worker: Worker | undefined;
@@ -38,7 +37,9 @@ export function normalizeImport(
     };
     const timeout = () =>
       finish(
-        new Error('格式檢查或轉換逾時。請縮短影片後重試，或選擇直接使用原片。'),
+        new Error(
+          '格式檢查或轉換逾時。請縮短影片後重試，或取消勾選後直接匯入原片。',
+        ),
       );
     const resetIdle = () => {
       clearTimeout(idle);
@@ -69,7 +70,7 @@ export function normalizeImport(
         } else if (data.type === 'error') finish(new Error(data.message));
       };
       resetIdle();
-      worker.postMessage({ file, mode });
+      worker.postMessage({ file });
       if (signal.aborted) abort();
       hidden();
     } catch (error) {

@@ -41,10 +41,10 @@ import { publicAsset } from '../lib/public-asset';
 import analysisWorkerUrl from './align.worker.ts?worker&url';
 // oxlint-disable-next-line import/default -- Vite emits the isolated audio decoder URL.
 import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
-import { normalizeImport, type ImportMode } from '../lib/normalize-import';
+import { normalizeImport } from '../lib/normalize-import';
 // oxlint-disable-next-line import/default -- Vite worker URL.
 import normalizeWorkerUrl from './normalize.worker.ts?worker&url';
-const APP_VERSION = 'V27';
+const APP_VERSION = 'V28';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -106,7 +106,7 @@ export default function Home() {
   }
   const [progress, setProgress] = useState(0);
   const [quality, setQuality] = useState('1080');
-  const [importMode, setImportMode] = useState<ImportMode>('auto');
+  const [screenRecording, setScreenRecording] = useState([false, false]);
   const [exportPhase, setExportPhase] = useState<ExportPhase>('preparing');
   const [exportMessage, setExportMessage] = useState('');
   const exportDialog = useRef<HTMLDialogElement>(null);
@@ -265,12 +265,23 @@ export default function Home() {
     clearResult();
   }
   async function importOne(file: File, index: number) {
-    if (!start(`格式檢查影片 ${names[index]}…`)) return;
+    const shouldConvert = screenRecording[index];
+    if (
+      !start(
+        shouldConvert
+          ? `格式轉換影片 ${names[index]}…`
+          : `讀取影片 ${names[index]}…`,
+      )
+    )
+      return;
+    setScreenRecording((current) =>
+      current.map((checked, i) => (i === index ? false : checked)),
+    );
     try {
       const signal = controller.current!.signal;
       const prepared = await normalizeImport(
         file,
-        importMode,
+        shouldConvert,
         signal,
         () =>
           new Worker(new URL(normalizeWorkerUrl, window.location.href), {
@@ -788,22 +799,9 @@ export default function Home() {
             className="analysis-sources"
             aria-label="音訊讀取中的影片"
           />
-          <label className="hint">
-            匯入格式處理
-            <select
-              value={importMode}
-              disabled={locked}
-              onChange={(e) => setImportMode(e.target.value as ImportMode)}
-            >
-              <option value="auto">自動檢查，需要時先轉換</option>
-              <option value="always">一律轉換（螢幕錄影建議）</option>
-              <option value="original">直接使用原片</option>
-            </select>
-          </label>
           <p className="hint">
-            相容轉換為 H.264／AAC、固定 30 fps，最長邊
-            1280。畫質會降低以減輕融合負擔，轉換後預選 720p
-            輸出。全程在裝置處理，需保持網頁開啟，可取消。仍卡頓時請選「一律轉換」後重新匯入。
+            螢幕錄影請勾選該支影片下方的選項，再選檔。會在裝置上轉成固定 30 fps
+            的相容格式，轉完預選 720p 輸出。
           </p>
           <div className="sources">
             {clips.map((clip, i) => (
@@ -838,6 +836,23 @@ export default function Home() {
                       e.target.value = '';
                     }}
                   />
+                </label>
+                <label className="hint">
+                  <input
+                    type="checkbox"
+                    checked={screenRecording[i]}
+                    disabled={locked}
+                    aria-label={`影片 ${names[i]} 是螢幕錄影`}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setScreenRecording((current) =>
+                        current.map((value, index) =>
+                          index === i ? checked : value,
+                        ),
+                      );
+                    }}
+                  />{' '}
+                  這支是螢幕錄影（匯入時轉檔）
                 </label>
                 {clip && (
                   <div className="clip-info">

@@ -7,11 +7,8 @@ import {
   Mp4OutputFormat,
   Conversion,
 } from 'mediabunny';
-import { normalizationPlan } from '../lib/normalize-policy.mjs';
 
-self.onmessage = async ({
-  data,
-}: MessageEvent<{ file: File; mode: string }>) => {
+self.onmessage = async ({ data }: MessageEvent<{ file: File }>) => {
   const input = new Input({
     source: new BlobSource(data.file),
     formats: ALL_FORMATS,
@@ -23,29 +20,14 @@ self.onmessage = async ({
     const duration = await input.computeDuration();
     if (!Number.isFinite(duration) || duration < 3 || duration > 600)
       throw new Error('支援每部 3 秒至 10 分鐘的影片。');
-    const [codec, width, height, metrics] = await Promise.all([
-      track.getCodec(),
+    const [width, height] = await Promise.all([
       track.getDisplayWidth(),
       track.getDisplayHeight(),
-      track.computeFrameRateMetrics({ targetPacketCount: 512 }),
     ]);
-    const plan = normalizationPlan({
-      codec,
-      width,
-      height,
-      fps: metrics.bestGuessFrameRate,
-      constant: metrics.frameRateIsConstant,
-    });
-    const description = `${codec ?? '未知編碼'} · ${width}×${height} · 約 ${metrics.averageFrameRate.toFixed(1)} fps（取樣檢查）`;
-    if (data.mode !== 'always' && !plan.reasons.length) {
-      self.postMessage({ type: 'done', note: description + '；沿用原片。' });
-      return;
-    }
-    self.postMessage({
-      type: 'progress',
-      progress: 0,
-      note: plan.reasons.join('、') || '指定轉換',
-    });
+    const scale = Math.min(1, 1280 / Math.max(width, height));
+    const outputWidth = Math.max(2, Math.floor((width * scale) / 2) * 2);
+    const outputHeight = Math.max(2, Math.floor((height * scale) / 2) * 2);
+    self.postMessage({ type: 'progress', progress: 0 });
     const target = new BufferTarget();
     const output = new Output({
       format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
@@ -59,8 +41,8 @@ self.onmessage = async ({
       trim: { start: 0 },
       video: {
         codec: 'avc',
-        width: plan.width,
-        height: plan.height,
+        width: outputWidth,
+        height: outputHeight,
         fit: 'contain',
         frameRate: 30,
         bitrate: 3_000_000,
@@ -87,9 +69,7 @@ self.onmessage = async ({
     self.postMessage({
       type: 'done',
       file,
-      note:
-        description +
-        ` → H.264／AAC · ${plan.width}×${plan.height} · 固定 30 fps`,
+      note: `已轉換螢幕錄影 · H.264／AAC · ${outputWidth}×${outputHeight} · 固定 30 fps`,
     });
   } catch (error) {
     self.postMessage({
