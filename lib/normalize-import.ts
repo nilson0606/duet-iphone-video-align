@@ -6,7 +6,12 @@ export function normalizeImport(
   signal: AbortSignal,
   createWorker: () => Worker,
   onProgress: (message: string) => void,
-): Promise<{ file: File; note: string; converted: boolean }> {
+): Promise<{
+  file: File;
+  note: string;
+  converted: boolean;
+  mono?: Float32Array;
+}> {
   if (signal.aborted) return Promise.reject(abortReason(signal));
   if (file.size > 250 * 1024 * 1024)
     return Promise.reject(new Error('每部影片上限 250 MB。'));
@@ -18,7 +23,12 @@ export function normalizeImport(
     let settled = false;
     const finish = (
       error?: Error,
-      result?: { file: File; note: string; converted: boolean },
+      result?: {
+        file: File;
+        note: string;
+        converted: boolean;
+        mono?: Float32Array;
+      },
     ) => {
       if (settled) return;
       settled = true;
@@ -66,6 +76,7 @@ export function normalizeImport(
             file: data.file ?? file,
             note: data.note,
             converted: !!data.file,
+            mono: data.mono instanceof Float32Array ? data.mono : undefined,
           });
         } else if (data.type === 'error') finish(new Error(data.message));
       };

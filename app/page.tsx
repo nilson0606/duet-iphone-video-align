@@ -44,7 +44,7 @@ import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
 import { normalizeImport } from '../lib/normalize-import';
 // oxlint-disable-next-line import/default -- Vite worker URL.
 import normalizeWorkerUrl from './normalize.worker.ts?worker&url';
-const APP_VERSION = 'V29';
+const APP_VERSION = 'V30';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -291,6 +291,23 @@ export default function Home() {
       );
       const clip = await loadClip(prepared.file);
       clip.importNote = prepared.note;
+      if (
+        prepared.mono &&
+        Math.abs(prepared.mono.length / 16000 - clip.duration) < 0.1
+      ) {
+        const length = Math.ceil(clip.duration * 16000);
+        clip.mono = new Float32Array(length);
+        clip.mono.set(prepared.mono.subarray(0, length));
+        clip.audioReadMethod = 'fast';
+        clip.peaks = Array.from({ length: 64 }, (_, i) => {
+          let peak = 0;
+          const start = Math.floor((i * length) / 64);
+          const end = Math.floor(((i + 1) * length) / 64);
+          for (let j = start; j < end; j += 16)
+            peak = Math.max(peak, Math.abs(clip.mono![j]));
+          return peak;
+        });
+      }
       if (signal.aborted) {
         disposeClip(clip);
         throw signal.reason ?? new DOMException('已取消', 'AbortError');

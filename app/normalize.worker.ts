@@ -7,6 +7,7 @@ import {
   Mp4OutputFormat,
   Conversion,
 } from 'mediabunny';
+import { decodeAudioTrack } from '../lib/decode-audio-track.ts';
 
 self.onmessage = async ({ data }: MessageEvent<{ file: File }>) => {
   const input = new Input({
@@ -66,10 +67,43 @@ self.onmessage = async ({ data }: MessageEvent<{ file: File }>) => {
       data.file.name.replace(/\.[^.]+$/, '') + '_相容30fps.mp4',
       { type: 'video/mp4' },
     );
+    // Decode the completed file once, before the editor opens its video players.
+    // Preserve its presentation timestamps rather than decoding the original file.
+    let mono: Float32Array | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const converted = new Input({
+      source: new BlobSource(file),
+      formats: ALL_FORMATS,
+    });
+    try {
+      const convertedDuration = await converted.computeDuration();
+      self.postMessage({ type: 'progress', progress: 1, note: '準備對齊聲音' });
+      mono = await Promise.race([
+        decodeAudioTrack(file, convertedDuration, () => {
+          self.postMessage({
+            type: 'progress',
+            progress: 1,
+            note: '準備對齊聲音',
+          });
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Audio preparation timed out')),
+            20000,
+          );
+        }),
+      ]);
+    } catch {
+      // Older browsers can still use the existing player capture during alignment.
+    } finally {
+      clearTimeout(timer);
+      converted.dispose();
+    }
     self.postMessage({
       type: 'done',
+      mono,
       file,
-      note: `已轉換螢幕錄影 · H.264／AAC · ${outputWidth}×${outputHeight} · 固定 30 fps`,
+      note: `已轉換螢幕錄影 · H.264／AAC · ${outputWidth}×${outputHeight} · 固定 30 fps${mono ? ' · 對齊聲音已備妥' : ''}`,
     });
   } catch (error) {
     self.postMessage({

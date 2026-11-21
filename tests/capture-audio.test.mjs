@@ -437,3 +437,15 @@ test('cancelling fast extraction terminates worker without starting player fallb
     ),
   );
 });
+
+test('import-prepared PCM bypasses player startup and decoder on the first alignment', async (t) => {
+  const env = environment(t);
+  const pcm = env.clips.map(() => new Float32Array(48000).fill(0.1));
+  env.clips.forEach((clip, i) => { clip.mono = pcm[i]; });
+  const before = env.clips.map((clip) => clip.video.playCalls);
+  env.context.resume = () => { throw new Error('Prepared audio must not prime playback'); };
+  await env.run(() => { throw new Error('Prepared audio must not decode again'); });
+  assert.deepEqual(env.clips.map((clip) => clip.video.playCalls), before);
+  env.clips.forEach((clip, i) => assert.equal(clip.mono, pcm[i]));
+  assert.equal(env.moduleCalls, 0);
+});
