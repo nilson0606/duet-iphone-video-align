@@ -44,7 +44,7 @@ import decodeWorkerUrl from './decode-audio.worker.ts?worker&url';
 import { normalizeImport } from '../lib/normalize-import';
 // oxlint-disable-next-line import/default -- Vite worker URL.
 import normalizeWorkerUrl from './normalize.worker.ts?worker&url';
-const APP_VERSION = 'V28';
+const APP_VERSION = 'V29';
 const names = ['A', 'B'];
 const sec = (n: number) => `${n.toFixed(2)} 秒`;
 function Wave({ peaks, color }: { peaks: number[]; color: string }) {
@@ -295,7 +295,6 @@ export default function Home() {
         disposeClip(clip);
         throw signal.reason ?? new DOMException('已取消', 'AbortError');
       }
-      if (prepared.converted) setQuality('720');
       if (!mounted.current) {
         disposeClip(clip);
         return;
@@ -801,7 +800,7 @@ export default function Home() {
           />
           <p className="hint">
             螢幕錄影請勾選該支影片下方的選項，再選檔。會在裝置上轉成固定 30 fps
-            的相容格式，轉完預選 720p 輸出。
+            的相容格式。輸出畫質預設 1080p，可自行調整。
           </p>
           <div className="sources">
             {clips.map((clip, i) => (
